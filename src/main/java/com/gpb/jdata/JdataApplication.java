@@ -35,13 +35,19 @@ public class JdataApplication {
 	private final LogRepository logRepository;
 	private final ConfigurableEnvironment configurableEnvironment;
 	private static ConfigurableApplicationContext applicationContext;
+
 	@PostConstruct
 	public void startupApplication() {
 		logPartitionRepository.createTodayPartition();
-		svoiCustomLogger.send("startService", "Start Service", "Started service", SvoiSeverityEnum.ONE);
+		svoiCustomLogger.send(
+			"startService", 
+			"Start Service", 
+			"Started service", 
+			SvoiSeverityEnum.ONE);
 
 		checkConfigChanges();
 	}
+
 	private void checkConfigChanges() {
 		String props = Utils.getSources(configurableEnvironment.getPropertySources());
 		String propsHash = Utils.getHash(props, "SHA-256");
@@ -49,13 +55,21 @@ public class JdataApplication {
 
 		Log logEntity = logRepository.findLatestByType("checkConfig", localHostName);
 		if (logEntity == null) {
-			svoiCustomLogger.send("checkConfig", "Check Config", propsHash, SvoiSeverityEnum.ONE);
+			svoiCustomLogger.send(
+				"checkConfig", 
+				"Check Config", 
+				propsHash, 
+				SvoiSeverityEnum.ONE);
 		} else {
 			String prevHash = StringUtils.trim(
 					StringUtils.substringBetween(logEntity.getLog(), "msg=", "deviceProcessName=")
 			);
 			if (!StringUtils.equals(prevHash, propsHash)) {
-				svoiCustomLogger.send("checkConfig", "Check Config", propsHash, SvoiSeverityEnum.ONE);
+				svoiCustomLogger.send(
+					"checkConfig", 
+					"Check Config", 
+					propsHash, 
+					SvoiSeverityEnum.ONE);
 			}
 		}
 	}
@@ -71,9 +85,14 @@ public class JdataApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(JdataApplication.class, args);
 	}
+
 	@PreDestroy
 	public void shutdownApplication() {
-		svoiCustomLogger.send("stopService", "Stop Service", "Stopped service", SvoiSeverityEnum.ONE);
+		svoiCustomLogger.send(
+			"stopService", 
+			"Stop Service", 
+			"Stopped service", 
+			SvoiSeverityEnum.ONE);
 	}
 
 	public static void restart() {
