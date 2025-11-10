@@ -114,10 +114,15 @@ public class PGAttrdefServiceImpl implements PGAttrdefService {
         db = db.substring(db.lastIndexOf("/") + 1);
 
         List<PGAttrdefReplication> replicationData = data.stream()
-                .map(d -> new PGAttrdefReplication(new PGAttrdefId(d.getAdrelid(), d.getAdnum()), d.getAdbin(), "pg_attrdef_rep"))
+                .map(d -> new PGAttrdefReplication(
+                        new PGAttrdefId(d.getAdrelid(), d.getAdnum()), d.getAdbin(), "pg_attrdef_rep"))
                 .collect(Collectors.toList());
-        pgAttrdefRepository.saveAll(replicationData);
-        logger.info("[pg_attrdef_rep] Data replicated successfully.");
+        if (replicationData != null && !replicationData.isEmpty()) {
+            pgAttrdefRepository.saveAll(replicationData);
+            logger.info("[pg_attrdef_rep] Data replicated successfully.");
+        } else {
+            logger.info("[pg_attrdef_rep] Data is empty.");
+        }
     }
 
     /**

@@ -115,9 +115,14 @@ public class PGPartitionServiceImpl implements PGPartitionService {
                         d.getOid(), d.getParrelid(), d.getParnatts(),
                         d.getParkind(), d.getParatts(), finalDb))
                 .collect(Collectors.toList());
-        pgPartitionRepository.saveAll(replicated);
-        logger.info("[pg_partition_rep] Data replicated successfully.");
-        writeStatistics((long) replicated.size(), "pg_partition_rep", connection);
+
+        if (replicated != null && !replicated.isEmpty()) {
+            pgPartitionRepository.saveAll(replicated);
+            logger.info("[pg_partition_rep] Data replicated successfully.");
+            writeStatistics((long) replicated.size(), "pg_partition_rep", connection);
+        } else {
+            logger.info("[pg_partition_rep] Data is empty.");
+        }
     }
 
     /**

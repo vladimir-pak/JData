@@ -34,4 +34,27 @@ public class ExecutionTimeAspect {
             throw e;
         }
     }
+
+    @Around("execution(* com.gpb.jdata.orda.service.*.*(..))")
+    public Object logOrdaExecutionTime(ProceedingJoinPoint joinPoint) throws Throwable {
+        long startTime = System.currentTimeMillis();
+        
+        try {
+            Object result = joinPoint.proceed();
+            long executionTime = System.currentTimeMillis() - startTime;
+            
+            log.info("Метод {} выполнен за {} мс", 
+                    joinPoint.getSignature().toShortString(), 
+                    executionTime);
+            
+            return result;
+        } catch (Exception e) {
+            long executionTime = System.currentTimeMillis() - startTime;
+            log.error("Метод {} завершился с ошибкой за {} мс. Ошибка: {}", 
+                    joinPoint.getSignature().toShortString(), 
+                    executionTime, 
+                    e.getMessage());
+            throw e;
+        }
+    }
 }

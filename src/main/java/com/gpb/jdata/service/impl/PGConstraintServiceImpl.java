@@ -124,9 +124,13 @@ public class PGConstraintServiceImpl implements PGConstraintService {
                 .map(d -> convertToReplication(d, finalDb))
                 .collect(Collectors.toList());
 
-        pgConstraintRepository.saveAll(replicationData);
-        logger.info("[pg_constraint_rep] Data replicated successfully.");
-        writeStatistics((long) replicationData.size(), "pg_constraint_rep", connection);
+        if (replicationData != null && !replicationData.isEmpty()) {
+            pgConstraintRepository.saveAll(replicationData);
+            logger.info("[pg_constraint_rep] Data replicated successfully.");
+            writeStatistics((long) replicationData.size(), "pg_constraint_rep", connection);
+        } else {
+            logger.info("[pg_constraint_rep] Data is empty.");
+        }
     }
 
     /**
@@ -170,7 +174,7 @@ public class PGConstraintServiceImpl implements PGConstraintService {
             logger.info("[pg_constraint_rep] Updating {} records in the replica table", toUpdate.size());
             toUpdate.forEach(e ->
                     logAction("UPDATE", "pg_constraint_rep", " old: " +
-                                    pgConstraintRepository.findById(e.getOid())
+                                    pgConstraintRepository.findById(e.getOid().longValue())
                             , " new:" + e.toString())
             );
             replicate(toUpdate, connection);

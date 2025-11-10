@@ -1,16 +1,19 @@
 package com.gpb.jdata.orda.client;
 
+import java.util.Arrays;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import com.gpb.jdata.orda.OrdaClient;
+import com.gpb.jdata.orda.service.KeycloakAuthService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -25,6 +28,8 @@ public class OrdaClientImpl implements OrdaClient {
     private static final String DATABASE_URL = "/databases";
     private static final String SCHEMA_URL = "/databaseSchemas";
     private static final String TABLE_URL = "/tables";
+
+    private final KeycloakAuthService keycloak;
 
     public boolean checkDatabaseExists(String databaseName) {
         String url = ordaApiUrl + DATABASE_URL + "/name/" + databaseName;
@@ -135,8 +140,11 @@ public class OrdaClientImpl implements OrdaClient {
     }
     
     private HttpHeaders createHeaders() {
+        String token = keycloak.getValidAccessToken();
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Content-Type", "application/json");
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
+        headers.setBearerAuth(token);
         return headers;
     }
 }

@@ -16,7 +16,6 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
@@ -105,9 +104,14 @@ public class PGTypeServiceImpl implements PGTypeService {
         List<PGTypeReplication> replicationData = data.stream()
                 .map(d -> convertToReplication(d, "adb"))
                 .collect(Collectors.toList());
-        pgTypeRepository.saveAll(replicationData);
-        logger.info("[pg_type_rep] Data replicated successfully.");
-        writeStatistics((long) replicationData.size(), "pg_type_rep", connection);
+
+        if (replicationData != null && !replicationData.isEmpty()) {
+            pgTypeRepository.saveAll(replicationData);
+            logger.info("[pg_type_rep] Data replicated successfully.");
+            writeStatistics((long) replicationData.size(), "pg_type_rep", connection);
+        } else {
+            logger.info("[pg_type_rep] Data is empty.");
+        }
     }
 
     /**

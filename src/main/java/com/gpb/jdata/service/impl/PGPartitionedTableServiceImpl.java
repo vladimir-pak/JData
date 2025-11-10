@@ -1,7 +1,6 @@
 package com.gpb.jdata.service.impl;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -40,7 +39,6 @@ public class PGPartitionedTableServiceImpl implements PGPartitionedTableService 
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
 
-    private long lastTransactionCount = 0;
     /**
      * Создание начального снапшота и запись данных в таблицу репликации
      */
@@ -111,9 +109,14 @@ public class PGPartitionedTableServiceImpl implements PGPartitionedTableService 
         List<PGPartitionedTableReplication> replicationData = data.stream()
                 .map(d -> convertToReplication(d, finalDb))
                 .collect(Collectors.toList());
-        pgPartitionedTableRepository.saveAll(replicationData);
-        logger.info("[pg_partitioned_table_rep] Data replicated successfully.");
-        writeStatistics((long) replicationData.size(), "pg_partitioned_table_rep", connection);
+
+        if (replicationData != null && !replicationData.isEmpty()) {
+            pgPartitionedTableRepository.saveAll(replicationData);
+            logger.info("[pg_partitioned_table_rep] Data replicated successfully.");
+            writeStatistics((long) replicationData.size(), "pg_partitioned_table_rep", connection);
+        } else {
+            logger.info("[pg_partitioned_table_rep] Data is empty.");
+        }
     }
 
     /**
@@ -159,7 +162,7 @@ public class PGPartitionedTableServiceImpl implements PGPartitionedTableService 
             logger.info("[pg_partitioned_table_rep] Updating {} records in the replica table", toUpdate.size());
             toUpdate.forEach(e ->
                     logAction("UPDATE", "pg_partitioned_table_rep", " old: " +
-                                    pgPartitionedTableRepository.findById(e.getPartrelid())
+                                    pgPartitionedTableRepository.findById(e.getPartrelid().longValue())
                             , " new:" + e.toString())
             );
             replicate(toUpdate, connection);
@@ -169,22 +172,6 @@ public class PGPartitionedTableServiceImpl implements PGPartitionedTableService 
 
         long totalOperations = toAdd.size() + toUpdate.size() + toDelete.size();
         writeStatistics(totalOperations, "pg_partitioned_table_rep", connection);
-    }
-
-    /**
-     * Получение количества операций для таблицы pg_partitioned_table
-     */
-    private long getTransactionCountMain(Connection connection) throws SQLException {
-        String query = "SELECT n_tup_del + n_tup_ins + n_tup_upd as count FROM pg_catalog.pg_stat_all_tables WHERE schemaname = ? AND relname = ?";
-        try (PreparedStatement statement = connection.prepareStatement(query)) {
-            statement.setString(1, "pg_catalog");
-            statement.setString(2, "pg_partitioned_table");
-            ResultSet resultSet = statement.executeQuery();
-            if (resultSet.next()) {
-                return resultSet.getLong("count");
-            }
-        }
-        throw new SQLException("Failed to retrieve transaction count");
     }
 
     /**
