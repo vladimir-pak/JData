@@ -7,10 +7,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.orda.service.TableService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -20,17 +22,22 @@ import lombok.RequiredArgsConstructor;
 public class TableController {
     
     private final TableService tableService;
+    private final SvoiCustomLogger logger;
     
     @PostMapping("/sync/{schemaName}")
     @Operation(summary = "Запуск синхронизации по наименованию схемы")
-    public ResponseEntity<Void> syncTables(@PathVariable String schemaName) {
+    public ResponseEntity<Void> syncTables(@PathVariable String schemaName,
+            HttpServletRequest httpServletRequest) {
+        logger.logApiCall(httpServletRequest, "SyncTable");
         tableService.syncTables(schemaName);
         return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/delete/{fqn}")
     @Operation(summary = "Удаление таблицы по FQN")
-    public ResponseEntity<Void> deleteTable(@PathVariable String fqn) {
+    public ResponseEntity<Void> deleteTable(@PathVariable String fqn,
+            HttpServletRequest httpServletRequest) {
+        logger.logApiCall(httpServletRequest, "DeleteTable");
         tableService.deleteTable(fqn);
         return ResponseEntity.ok().build();
     }

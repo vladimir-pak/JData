@@ -5,10 +5,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.orda.service.MetadataService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -18,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 public class MetadataController {
     
     private final MetadataService metadataService;
+    private final SvoiCustomLogger logger;
     
     /**
      * @Полная синхронизация метаданных - POST /api/metadata/sync
@@ -31,7 +34,8 @@ public class MetadataController {
      */
     @PostMapping("/sync")
     @Operation(summary = "Запуск синхронизации всех сущностей")
-    public ResponseEntity<Void> syncMetadata() {
+    public ResponseEntity<Void> syncMetadata(HttpServletRequest httpServletRequest) {
+        logger.logApiCall(httpServletRequest, "SyncMetadata");
         metadataService.syncMetadata();
         return ResponseEntity.ok().build();
     }

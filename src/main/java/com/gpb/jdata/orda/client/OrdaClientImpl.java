@@ -18,13 +18,13 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class OrdaClientImpl implements OrdaClient {
 
-    @Value("${orda.api.url}")
+    @Value("${ord.api.baseUrl}")
     private String ordaApiUrl;
 
     private final RestTemplate restTemplate;
-    private static final String DATABASE_URL = "/v1/databases";
-    private static final String SCHEMA_URL = "/v1/databaseSchemas";
-    private static final String TABLE_URL = "/v1/tables";
+    private static final String DATABASE_URL = "/databases";
+    private static final String SCHEMA_URL = "/databaseSchemas";
+    private static final String TABLE_URL = "/tables";
 
     public boolean checkDatabaseExists(String databaseName) {
         String url = ordaApiUrl + DATABASE_URL + "/name/" + databaseName;

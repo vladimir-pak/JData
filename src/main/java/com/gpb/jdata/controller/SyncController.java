@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.service.PGAttrdefService;
 import com.gpb.jdata.service.PGAttributeService;
 import com.gpb.jdata.service.PGClassService;
@@ -24,6 +25,7 @@ import com.gpb.jdata.service.PGViewsService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -45,13 +47,18 @@ public class SyncController {
     private final PGViewsService pgViewsService;
     private final DatabaseConfig databaseConfig;
 
+    private final SvoiCustomLogger logger;
+
     /**
      * Метод для выполнения начального снапшота всех таблиц.
      */
     @PostMapping("/initial-snapshot")
     @Operation(summary = "Выполнение начального снапшота всех таблиц")
-    public ResponseEntity<Map<String, String>> initialSnapshot() throws SQLException {
+    public ResponseEntity<Map<String, String>> initialSnapshot(HttpServletRequest httpServletRequest) 
+            throws SQLException {
         Map<String, String> response = new HashMap<>();
+        
+        logger.logApiCall(httpServletRequest, "StartInitialSnapshot");
         try (Connection connection = DriverManager.getConnection(
                 databaseConfig.getUrl(),
                 databaseConfig.getUsername(),
@@ -81,8 +88,10 @@ public class SyncController {
      */
     @PostMapping("/synchronize")
     @Operation(summary = "Синхронизация всех таблиц")
-    public ResponseEntity<Map<String, String>> synchronize() {
+    public ResponseEntity<Map<String, String>> synchronize(HttpServletRequest httpServletRequest) {
         Map<String, String> response = new HashMap<>();
+
+        logger.logApiCall(httpServletRequest, "StartSynchronizeGP");
         try {
             pgClassService.synchronize();
             pgAttrdefService.synchronize();

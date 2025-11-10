@@ -5,11 +5,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.orda.config.DatabaseConfig;
 import com.gpb.jdata.orda.service.DatabaseService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -19,10 +21,12 @@ import lombok.RequiredArgsConstructor;
 public class DatabaseController {
     
     private final DatabaseService databaseService;
+    private final SvoiCustomLogger logger;
     
     @GetMapping("/check-and-create")
     @Operation(summary = "Создание базы данных")
-    public ResponseEntity<String> checkAndCreateDatabase() {
+    public ResponseEntity<String> checkAndCreateDatabase(HttpServletRequest httpServletRequest) {
+        logger.logApiCall(httpServletRequest, "CreateDatabase");
         try {
             databaseService.checkAndCreateDatabase(DatabaseConfig.ADB_DATABASE_NAME);
             return ResponseEntity.ok("Database 'adb' is ready.");
@@ -33,7 +37,8 @@ public class DatabaseController {
 
     @GetMapping("/current-database")
     @Operation(summary = "Получение текущей базы данных")
-    public ResponseEntity<String> getCurrentDatabaseName() {
+    public ResponseEntity<String> getCurrentDatabaseName(HttpServletRequest httpServletRequest) {
+        logger.logApiCall(httpServletRequest, "GetDatabase");
         try {
             String databaseName = databaseService.getCurrentDatabaseName();
             return ResponseEntity.ok("Current database: " + databaseName);
