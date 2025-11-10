@@ -94,9 +94,14 @@ public class PGPartitionRuleServiceImpl implements PGPartitionRuleService {
         List<PGPartitionRuleReplication> replicated = data.stream()
                 .map(r -> new PGPartitionRuleReplication(r.getOid(), r.getParchildrelid(), r.getParoid(), finalDb))
                 .collect(Collectors.toList());
-        pgPartitionRuleRepository.saveAll(replicated);
-        logger.info("[pg_partition_rule_rep] Replication complete.");
-        writeStatistics((long) replicated.size(), "pg_partition_rule_rep", connection);
+
+        if (replicated != null && !replicated.isEmpty()) {
+            pgPartitionRuleRepository.saveAll(replicated);
+            logger.info("[pg_partition_rule_rep] Replication complete.");
+            writeStatistics((long) replicated.size(), "pg_partition_rule_rep", connection);
+        } else {
+            logger.info("[pg_partition_rule_rep] Data is empty.");
+        }
     }
 
     private void compareSnapshots(List<PGPartitionRule> newData, Connection connection) throws SQLException {

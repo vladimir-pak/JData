@@ -107,9 +107,14 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
         List<PGNamespaceReplication> replicationData = data.stream()
                 .map(d -> convertToReplication(d, finalDb))
                 .collect(Collectors.toList());
-        pgNamespaceRepository.saveAll(replicationData);
-        logger.info("[pg_namespace_rep] Data replicated successfully.");
-        writeStatistics((long) replicationData.size(), "pg_namespace_rep", connection);
+
+        if (replicationData != null && !replicationData.isEmpty()) {
+            pgNamespaceRepository.saveAll(replicationData);
+            logger.info("[pg_namespace_rep] Data replicated successfully.");
+            writeStatistics((long) replicationData.size(), "pg_namespace_rep", connection);
+        } else {
+            logger.info("[pg_namespace_rep] Data is empty.");
+        }
     }
 
     /**

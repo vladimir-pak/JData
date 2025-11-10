@@ -116,9 +116,13 @@ public class PGAttributeServiceImpl implements PGAttributeService {
                 .map(d -> convertToReplication(d, "adb"))
                 .collect(Collectors.toList());
 
-        pgAttributeRepository.saveAll(replicationData);
-        logger.info("[pg_attribute_rep] Data replicated successfully.");
-        writeStatistics((long) replicationData.size(), "pg_attribute_rep", connection);
+        if (replicationData != null && !replicationData.isEmpty()) {
+            pgAttributeRepository.saveAll(replicationData);
+            logger.info("[pg_attribute_rep] Data replicated successfully.");
+            writeStatistics((long) replicationData.size(), "pg_attribute_rep", connection);
+        } else {
+            logger.info("[pg_attribute_rep] Data is empty.");
+        }
     }
 
     /**

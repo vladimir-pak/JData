@@ -125,9 +125,14 @@ public class PGClassServiceImpl implements PGClassService {
                         d.getRelnamespace(),
                         d.getRelkind()))
                 .collect(Collectors.toList());
-        pgClassRepository.saveAll(replicationData);
-        logger.info("[pg_class_rep] Data replicated successfully.");
-        writeStatistics((long) replicationData.size(), "pg_class_rep", connection);
+
+        if (replicationData != null && !replicationData.isEmpty()) {
+            pgClassRepository.saveAll(replicationData);
+            logger.info("[pg_class_rep] Data replicated successfully.");
+            writeStatistics((long) replicationData.size(), "pg_class_rep", connection);
+        } else {
+            logger.info("[pg_class_rep] Data is empty.");
+        }
     }
 
     /**

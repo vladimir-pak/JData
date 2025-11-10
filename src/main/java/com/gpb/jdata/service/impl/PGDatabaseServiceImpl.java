@@ -39,8 +39,6 @@ public class PGDatabaseServiceImpl implements PGDatabaseService {
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
 
-    private long lastTransactionCount = 0;
-
     @Override
     @Transactional
     public List<PGDatabase> initialSnapshot(Connection connection) throws SQLException {
@@ -57,7 +55,7 @@ public class PGDatabaseServiceImpl implements PGDatabaseService {
             long currentTransactionCount = getTransactionCount(connection);
             List<PGDatabase> newData = readMasterData(connection);
             compareSnapshots(newData, connection);
-            lastTransactionCount = currentTransactionCount;
+
             writeStatistics(currentTransactionCount, "pg_database", connection);
         } catch (SQLException e) {
             logger.error("[pg_database] Error during synchronization", e);
@@ -87,9 +85,13 @@ public class PGDatabaseServiceImpl implements PGDatabaseService {
                 .map(r -> new PGDatabaseReplication(r.getOid(), r.getDatname(), finalDb))
                 .collect(Collectors.toList());
 
-        pgDatabaseRepository.saveAll(replicated);
-        logger.info("[pg_database_rep] Replication complete.");
-        writeStatistics((long) replicated.size(), "pg_database_rep", connection);
+        if (replicated != null && !replicated.isEmpty()) {
+            pgDatabaseRepository.saveAll(replicated);
+            logger.info("[pg_database_rep] Replication complete.");
+            writeStatistics((long) replicated.size(), "pg_database_rep", connection);
+        } else {
+            logger.info("[pg_database_rep] Data is empty.");
+        }
     }
 
     private void compareSnapshots(List<PGDatabase> newData, Connection connection) throws SQLException {

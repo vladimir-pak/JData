@@ -113,9 +113,14 @@ public class PGDescriptionServiceImpl implements PGDescriptionService {
         List<PGDescriptionReplication> replicationData = data.stream()
                 .map(d -> convertToReplication(d, "adb"))
                 .collect(Collectors.toList());
-        pgDescriptionRepository.saveAll(replicationData);
-        logger.info("[pg_description_rep] Data replicated successfully.");
-        writeStatistics((long) replicationData.size(), "pg_description_rep", connection);
+
+        if (replicationData != null && !replicationData.isEmpty()) {
+            pgDescriptionRepository.saveAll(replicationData);
+            logger.info("[pg_description_rep] Data replicated successfully.");
+            writeStatistics((long) replicationData.size(), "pg_description_rep", connection);
+        } else {
+            logger.info("[pg_description_rep] Data is empty.");
+        }
     }
 
     /**

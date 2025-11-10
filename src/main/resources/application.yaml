@@ -17,7 +17,7 @@ spring:
       max-connections: 10 # Количество параллельно выполняемых api в ОРД
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/meta_base}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/jdata_db}
     username: ${DB_USER:postgres}
     password: ${DB_PASSWORD:kampus}
     driverClassName: org.postgresql.Driver
@@ -43,13 +43,19 @@ spring:
         temp:
           use_jdbc_metadata_defaults: false
 
-  # flyway:
-  #   schemas: postgres_metadata
-  #   enabled: true
-  #   locations: classpath:db/migration
-  #   url: jdbc:postgresql://localhost:5432/meta_base
-  #   user: postgres
-  #   password: kampus
+  greenplum:
+    url: ${GREENPLUM_URL:jdbc:postgresql://localhost:5432/adb}
+    username: ${GREENPLUM_USERNAME:user}
+    password: ${GREENPLUM_PASSWORD:password}
+    type: PostgreSQL
+
+  flyway:
+    schemas: jdata
+    enabled: true
+    locations: classpath:db/migration
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/jdata_db}
+    user: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:kampus}
 
 keycloak:
   server-url: https://auth.example.com/realms/myrealm/protocol/openid-connect/token
