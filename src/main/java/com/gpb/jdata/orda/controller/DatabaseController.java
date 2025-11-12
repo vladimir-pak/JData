@@ -6,7 +6,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.gpb.jdata.log.SvoiCustomLogger;
-import com.gpb.jdata.orda.config.DatabaseConfig;
 import com.gpb.jdata.orda.service.DatabaseService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,13 +21,15 @@ public class DatabaseController {
     
     private final DatabaseService databaseService;
     private final SvoiCustomLogger logger;
+
+    public static final String ADB_DATABASE_NAME = "adb";
     
     @GetMapping("/check-and-create")
     @Operation(summary = "Создание базы данных")
     public ResponseEntity<String> checkAndCreateDatabase(HttpServletRequest httpServletRequest) {
         logger.logApiCall(httpServletRequest, "CreateDatabase");
         try {
-            databaseService.checkAndCreateDatabase(DatabaseConfig.ADB_DATABASE_NAME);
+            databaseService.checkAndCreateDatabase(ADB_DATABASE_NAME);
             return ResponseEntity.ok("Database 'adb' is ready.");
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("Error: " + e.getMessage());

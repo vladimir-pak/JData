@@ -1,8 +1,11 @@
 package com.gpb.jdata.orda.service;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import com.gpb.jdata.orda.client.OrdaClientImpl;
+import com.gpb.jdata.orda.client.OrdaClient;
+import com.gpb.jdata.orda.dto.DatabaseDTO;
+import com.gpb.jdata.orda.properties.OrdProperties;
 
 import lombok.RequiredArgsConstructor;
 
@@ -10,15 +13,42 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class DatabaseService {
 
-    private final OrdaClientImpl ordaClientImpl;
+    @Value("${ord.api.baseUrl}")
+    private String ordaApiUrl;
 
+    private static final String DATABASE_URL = "/databases";
+
+    private final OrdProperties ordProperties;
+    private final OrdaClient ordaClient;
+
+    private boolean checkDatabaseExists(String databaseName) {
+        String fqn = ordProperties.getPrefixFqn();
+        String url = ordaApiUrl + "databases/name/" + fqn + databaseName;
+        return ordaClient.checkEntityExists(url, "База данных");
+    }
+
+    private void createDatabase(String databaseName) {
+        String url = ordaApiUrl + DATABASE_URL;
+        DatabaseDTO body = DatabaseDTO.builder()
+                .name(databaseName)
+                .build();
+        ordaClient.sendPostRequest(url, body, "Создание базы данных");
+    }
+
+    /*
+     * Проверка наличия БД в ОРДе.
+     * Создание в случае отсутствия.
+     */
     public void checkAndCreateDatabase(String databaseName) {
-        if (!ordaClientImpl.checkDatabaseExists(databaseName)) {
-            ordaClientImpl.createDatabase(databaseName);
+        if (!checkDatabaseExists(databaseName)) {
+            createDatabase(databaseName);
         }
     }
     
+    /*
+     * Получение БД
+     */
     public String getCurrentDatabaseName() {
-        return "adb";
+        return ordProperties.getDbName();
     }
 }

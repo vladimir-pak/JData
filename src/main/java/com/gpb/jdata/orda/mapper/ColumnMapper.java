@@ -5,57 +5,61 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import com.gpb.jdata.orda.dto.ColumnDTO;
-import com.gpb.jdata.orda.model.ColumnEntity;
+import com.gpb.jdata.orda.enums.TypesWithDataLength;
 
 public class ColumnMapper {
-    public static ColumnDTO toDTO(Map<String, Object> map) {
-        ColumnDTO dto = new ColumnDTO();
-        dto.setName((String) map.get("columnname"));
-        dto.setDataType((String) map.get("datatype"));
-        dto.setDataLength((Integer) map.get("datalength"));
-        dto.setDataTypeDisplay((String) map.get("datatypedisplay"));
-        dto.setDescription((String) map.get("description"));
-        dto.setFullyQualifiedName((String) map.get("fullyqualifiedname"));
-        dto.setConstraint((String) map.get("constraint"));
-        dto.setOrdinalPosition((Integer) map.get("ordinalposition"));
-        return dto;
+
+    private static ColumnDTO toDTO(Map<String, Object> map) {
+        String processedDataType = TypeMapper.mapToOrdaType(map.get("dtype").toString());
+        String processedDataLength = TypesWithDataLength.getProcessedDataLength(
+                processedDataType,
+                map.get("dtlength").toString()
+        );
+        
+        Integer dataLength = 0;
+        if (map.get("dtlength") instanceof Integer) {
+            dataLength = (Integer) map.get("dtlength");
+        };
+
+        String constraint = null;
+        Object notnull = map.get("notnull");
+        if (notnull instanceof Boolean && (Boolean) notnull) {
+            constraint = "NULLABLE";
+        }
+
+        String dataType = map.get("dtype").toString();
+        
+        return ColumnDTO.builder()
+                .name(map.get("columnname").toString())
+                .dataType(dataType)
+                .arrayDataType(resolveArrayType(dataType, processedDataType))
+                .dataTypeDisplay(dataTypeDisplay(dataType, dataLength))
+                .dataLength(processedDataLength)
+                .description(map.get("description").toString())
+                .constraint(constraint)
+                .ordinalPosition(map.get("attnum").toString())
+                .build();
+    }
+
+    private static String resolveArrayType(String sourceType, String processedType) {
+        if (sourceType == null || !"ARRAY".equalsIgnoreCase(processedType)) {
+            return null; // только для ARRAY
+        }
+        if (sourceType.endsWith("[]")) {
+            return sourceType.substring(0, sourceType.length() - 2).toUpperCase();
+        }
+        return null;
     }
 
     public static List<ColumnDTO> toDTOListFromMap(List<Map<String, Object>> maps) {
         return maps.stream().map(ColumnMapper::toDTO).collect(Collectors.toList());
     }
 
-    public static ColumnDTO toDTO(ColumnEntity entity) {
-        ColumnDTO dto = new ColumnDTO();
-        dto.setName(entity.getName());
-        dto.setDataType(entity.getDataType());
-        dto.setDataLength(entity.getDataLength());
-        dto.setDataTypeDisplay(entity.getDataTypeDisplay());
-        dto.setDescription(entity.getDescription());
-        dto.setFullyQualifiedName(entity.getFullyQualifiedName());
-        dto.setConstraint(entity.getConstraint());
-        dto.setOrdinalPosition(entity.getOrdinalPosition());
-        return dto;
-    }
-
-    public static List<ColumnDTO> toDTOList(List<ColumnEntity> entities) {
-        return entities.stream().map(ColumnMapper::toDTO).collect(Collectors.toList());
-    }
-
-    public static ColumnEntity toEntity(ColumnDTO dto) {
-        ColumnEntity entity = new ColumnEntity();
-        entity.setName(dto.getName());
-        entity.setDataType(dto.getDataType());
-        entity.setDataLength(dto.getDataLength());
-        entity.setDataTypeDisplay(dto.getDataTypeDisplay());
-        entity.setDescription(dto.getDescription());
-        entity.setFullyQualifiedName(dto.getFullyQualifiedName());
-        entity.setConstraint(dto.getConstraint());
-        entity.setOrdinalPosition(dto.getOrdinalPosition());
-        return entity;
-    }
-    
-    public static List<ColumnEntity> toEntityList(List<ColumnDTO> dtos) {
-        return dtos.stream().map(ColumnMapper::toEntity).collect(Collectors.toList());
+    public static String dataTypeDisplay(String pgTypName, Integer atttypmod) {
+        String base = (pgTypName == null ? "" : pgTypName).toLowerCase();
+        if (atttypmod != null && atttypmod > 0) {
+            return base + "(" + atttypmod + ")";
+        }
+        return base;
     }
 }

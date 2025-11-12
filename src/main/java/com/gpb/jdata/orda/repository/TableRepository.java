@@ -87,9 +87,18 @@ public class TableRepository {
                    attr.attnotnull as notnull,
                    attr.attnum as attnum,
                    dat.description as column_description,
-                   case when con.contype = 'p' then con.conkey else null end as pk_constraint,
-                   case when con.contype = 'f' then con.confrelid else null end as foreign_table_id,
-                   case when con.contype = 'f' then con.confkey else null end as fk_constraint,
+                   case when con.contype = 'p' then 
+                     (select array_agg(pka.attname) 
+                      from pg_attribute_rep pka
+                      where pka.attrelid = cl."oid"
+                      and pka.attnum = any(con.conkey))  else null end as pk_constraint,
+                   case when con.contype = 'f' then 
+                     (select array_agg(fkn.nspname || '.' || fkc.relname || '.' || fka.attname)
+                      from pg_class_rep fkc
+                      join pg_namespace_rep fkn on fkc.relnamespace = fkn."oid" 
+                      join pg_attribute_rep fka on fkc."oid" = fka.attrelid
+                      where fkc."oid" = con.confrelid
+                      and fka.attnum = any(con.confkey)) else null end as fk_constraint,
                    v.definition as view_definition
             from pg_class_rep cl
             join pg_namespace_rep nsp
@@ -121,14 +130,15 @@ public class TableRepository {
         return jdbcTemplate.queryForList(sql);
     }
 
-    public Map<String, Object> getTableInfoById(int tableId) {
+    public List<Map<String, Object>> getTableInfoById(int tableId) {
         String sql = """
-            select nsp.nspname as schemaname, cl.relname as tablename
+            select nsp.nspname || '.' || cl.relname as tablename, att.attname , att.attnum
             from pg_class_rep cl
             join pg_namespace_rep nsp on cl.relnamespace = nsp.oid
+            left join pg_attribute_rep att on cl."oid" = att.attrelid
             where cl.oid = ?
         """;
-        return jdbcTemplate.queryForMap(sql, tableId);
+        return jdbcTemplate.queryForList(sql, tableId);
     }
     
     public List<Map<String, Object>> getDeletedTables() {

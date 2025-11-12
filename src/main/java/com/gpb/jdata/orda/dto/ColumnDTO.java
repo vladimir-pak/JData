@@ -1,15 +1,26 @@
 package com.gpb.jdata.orda.dto;
 
+import com.gpb.jdata.orda.enums.TypesWithDataLength;
+
+import lombok.Builder;
 import lombok.Data;
 
 @Data
+@Builder
 public class ColumnDTO {
     private String name;
     private String dataType;
-    private Integer dataLength;
     private String dataTypeDisplay;
+    private String dataLength;
     private String description;
-    private String fullyQualifiedName;
     private String constraint;
-    private Integer ordinalPosition;
+    private String ordinalPosition;
+    private String arrayDataType;
+
+    /*
+     * setter-заглушка с проверкой обязательности заполнения dataLength. Если пусто, то 0
+     */
+    public void setDataLength(String dataLength) {
+        this.dataLength = TypesWithDataLength.getProcessedDataLength(this.dataType, dataLength);
+    }
 }

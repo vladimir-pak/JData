@@ -1,4 +1,4 @@
-package com.gpb.jdata.models;
+package com.gpb.jdata.models.replication;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;

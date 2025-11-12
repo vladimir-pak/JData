@@ -13,7 +13,6 @@ public class MetadataService {
     private final SchemaService schemaService;
     private final TableService tableService;
     
-    private final DeletionTrackingService deletionTrackingService;
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(MetadataService.class);
 
     public void syncMetadata() {
@@ -57,8 +56,9 @@ public class MetadataService {
     
     public void handleDeletions() {
         try {
-            deletionTrackingService.handleSchemaDeletions();
-            deletionTrackingService.handleTableDeletions();
+            // deletionTrackingService.handleSchemaDeletions();
+            schemaService.handleDeletions();
+            tableService.handleDeletions();
             logger.info("Обработка удалений завершена успешно.");
         } catch (Exception e) {
             logger.error("Ошибка при обработке удалений: {}", e.getMessage(), e);

@@ -10,61 +10,24 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
-import com.gpb.jdata.orda.OrdaClient;
 import com.gpb.jdata.orda.service.KeycloakAuthService;
 
 import lombok.RequiredArgsConstructor;
 
 @Component
 @RequiredArgsConstructor
-public class OrdaClientImpl implements OrdaClient {
+public class OrdaClient {
 
     @Value("${ord.api.baseUrl}")
     private String ordaApiUrl;
 
     private final RestTemplate restTemplate;
-    private static final String DATABASE_URL = "/databases";
-    private static final String SCHEMA_URL = "/databaseSchemas";
     private static final String TABLE_URL = "/tables";
 
     private final KeycloakAuthService keycloak;
-
-    public boolean checkDatabaseExists(String databaseName) {
-        String url = ordaApiUrl + DATABASE_URL + "/name/" + databaseName;
-        return checkEntityExists(url, "База данных");
-    }
-
-    public void createDatabase(String databaseName) {
-        String url = ordaApiUrl + DATABASE_URL;
-        Map<String, Object> body = Map.of(
-                "name", databaseName,
-                "displayName", "ADB Database",
-                "description", "Default ADB database"
-        );
-        sendPostRequest(url, body, "Создание базы данных");
-    }
-
-    public boolean checkSchemaExists(String fqn) {
-        String url = ordaApiUrl + SCHEMA_URL + "/name/" + fqn;
-        return checkEntityExists(url, "Схема");
-    }
-
-    public void createOrUpdateSchema(Map<String, Object> schemaData) {
-        String url = ordaApiUrl + SCHEMA_URL;
-        sendPutRequest(url, schemaData, "Создание или обновление схемы");
-    }
-
-    public void deleteSchema(String fqn) {
-        String url = ordaApiUrl + SCHEMA_URL + "/name/" + fqn;
-        sendDeleteRequest(url, "Удаление схемы");
-    }
-
-    public void createOrUpdateTable(Map<String, Object> tableData) {
-        String url = ordaApiUrl + TABLE_URL;
-        sendPutRequest(url, tableData, "Создание или обновление таблицы");
-    }
 
     public boolean isProjectEntity(String fqn) {
         String url = ordaApiUrl + TABLE_URL + "/name/" + fqn;
@@ -75,16 +38,12 @@ public class OrdaClientImpl implements OrdaClient {
             }
         } catch (Exception e) {
             System.err.println("Ошибка при проверке isProjectEntity для таблицы: " + fqn + ". " + e.getMessage());
+            return true;
         }
         return false;
     }
 
-    public void deleteTable(String fqn) {
-        String url = ordaApiUrl + TABLE_URL + "/name/" + fqn;
-        sendDeleteRequest(url, "Удаление таблицы");
-    }
-
-    private boolean checkEntityExists(String url, String entityName) {
+    public boolean checkEntityExists(String url, String entityName) {
         try {
             ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
@@ -97,21 +56,10 @@ public class OrdaClientImpl implements OrdaClient {
         return false;
     }
 
-    public boolean checkTableExists(String fqn) {
-        String url = ordaApiUrl + "/v1/tables/name/" + fqn;
-        try {
-            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
-            return response.getStatusCode().is2xxSuccessful() && response.getBody() != null;
-        } catch (Exception e) {
-            System.err.println("Ошибка при проверке существования таблицы: " + fqn + ". " + e.getMessage());
-            return false;
-        }
-    }
-
-    private void sendPostRequest(String url, Map<String, Object> body, String actionDescription) {
+    public <T> void sendPostRequest(String url, T body, String actionDescription) {
         try {
             HttpHeaders headers = createHeaders();
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+            HttpEntity<T> request = new HttpEntity<>(body, headers);
             restTemplate.postForObject(url, request, Void.class);
             System.out.println(actionDescription + " выполнено успешно: " + url);
         } catch (Exception e) {
@@ -119,10 +67,10 @@ public class OrdaClientImpl implements OrdaClient {
             }
     }
 
-    private void sendPutRequest(String url, Map<String, Object> body, String actionDescription) {
+    public <T> void sendPutRequest(String url, T body, String actionDescription) {
         try {
             HttpHeaders headers = createHeaders();
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+            HttpEntity<T> request = new HttpEntity<>(body, headers);
             restTemplate.exchange(url, HttpMethod.PUT, request, Void.class);
             System.out.println(actionDescription + " выполнено успешно: " + url);
         } catch (Exception e) {
@@ -130,10 +78,14 @@ public class OrdaClientImpl implements OrdaClient {
         }
     }
 
-    private void sendDeleteRequest(String url, String actionDescription) {
+    public void sendDeleteRequest(String url, String actionDescription) {
         try {
             restTemplate.delete(url);
             System.out.println(actionDescription + " выполнено успешно: " + url);
+        } catch (HttpClientErrorException e) {
+            System.err.println("HTTP ошибка " + e.getStatusCode() 
+                    + " при " + actionDescription + ": " + url);
+            throw e;
         } catch (Exception e) {
             System.err.println("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
         }

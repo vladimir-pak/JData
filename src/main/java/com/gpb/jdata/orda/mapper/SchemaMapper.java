@@ -1,16 +1,16 @@
 package com.gpb.jdata.orda.mapper;
 
-import java.util.HashMap;
 import java.util.Map;
 
+import com.gpb.jdata.orda.dto.SchemaDTO;
+
 public class SchemaMapper {
-    public static Map<String, Object> toRequestBody(Map<String, Object> row) {
-        Map<String, Object> body = new HashMap<>();
-        body.put("database", "adb");
-        String name = (String) row.get("schemaname");
-        body.put("displayName", name);
-        body.put("name", name);
-        body.put("description", row.get("description"));
-        return body;
+    public static SchemaDTO toRequestBody(Map<String, Object> row, String database) {
+        return SchemaDTO.builder()
+                .name(row.get("schemaname").toString())
+                .displayName(row.get("schemaname").toString())
+                .description(row.get("description").toString())
+                .database(database)
+                .build();
     }
 }

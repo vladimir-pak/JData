@@ -11,11 +11,6 @@ spring:
     host: test_dns
     port: test_port
 
-  ord:
-    api:
-      baseUrl: http://localhost:8585/api/v1
-      max-connections: 10 # Количество параллельно выполняемых api в ОРД
-
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/jdata_db}
     username: ${DB_USER:postgres}
@@ -43,12 +38,6 @@ spring:
         temp:
           use_jdbc_metadata_defaults: false
 
-  greenplum:
-    url: ${GREENPLUM_URL:jdbc:postgresql://localhost:5432/adb}
-    username: ${GREENPLUM_USERNAME:user}
-    password: ${GREENPLUM_PASSWORD:password}
-    type: PostgreSQL
-
   flyway:
     schemas: jdata
     enabled: true
@@ -56,6 +45,20 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/jdata_db}
     user: ${DB_USER:postgres}
     password: ${DB_PASSWORD:kampus}
+
+greenplum:
+  url: ${GREENPLUM_URL:jdbc:postgresql://localhost:5432/adb}
+  username: ${GREENPLUM_USERNAME:user}
+  password: ${GREENPLUM_PASSWORD:password}
+  type: PostgreSQL
+  
+ord:
+  api:
+    baseUrl: http://localhost:8585/api/v1
+    max-connections: 10 # Количество параллельно выполняемых api в ОРД
+  greenplum:
+    serviceName: NDP
+    dbName: adb
 
 keycloak:
   server-url: https://auth.example.com/realms/myrealm/protocol/openid-connect/token
