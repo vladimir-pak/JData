@@ -16,9 +16,12 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.log.SvoiCustomLogger;
+import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.master.PGClass;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGClassReplication;
@@ -26,6 +29,7 @@ import com.gpb.jdata.models.replication.Statistics;
 import com.gpb.jdata.repository.ActionRepository;
 import com.gpb.jdata.repository.PGClassRepository;
 import com.gpb.jdata.service.PGClassService;
+import com.gpb.jdata.utils.diff.DiffContainer;
 
 import lombok.RequiredArgsConstructor;
 
@@ -33,11 +37,15 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PGClassServiceImpl implements PGClassService {
     private static final Logger logger = LoggerFactory.getLogger(PGClassService.class);
+    private final SvoiCustomLogger svoiLogger;
 
     private final PGClassRepository pgClassRepository;
     private final ActionRepository actionRepository;
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
+
+    @Qualifier("pgClassDiffContainer")
+    private final DiffContainer diffContainer;
 
     private long lastTransactionCount = 0;
 
@@ -61,6 +69,11 @@ public class PGClassServiceImpl implements PGClassService {
      */
     @Override
     public void synchronize() {
+        svoiLogger.send(
+			"startSync", 
+			"Start PGClass sync", 
+			"Started PGClass sync", 
+			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
             long currentTransactionCount = getTransactionCount(connection);
 
@@ -163,22 +176,30 @@ public class PGClassServiceImpl implements PGClassService {
         if (!toDelete.isEmpty()) {
             logger.info("[pg_class_rep] Deleting {} records from the replica table", toDelete.size());
             pgClassRepository.deleteAllById(toDelete);
+            toDelete.forEach(e -> {
+                    diffContainer.addDeleted(String.format("%s.%s",
+                            replicationMap.get(e).getRelnamespace(),
+                            replicationMap.get(e).getRelname()));
+                    diffContainer.addDeletedOids(e);
+            });
             logAction("DELETE", "pg_class_rep", toDelete.size() + " records deleted", "");
         }
 
         if (!toAdd.isEmpty()) {
             logger.info("[pg_class_rep] Adding {} records to the replica table", toAdd.size());
             replicate(toAdd, connection);
+            toAdd.forEach(e -> diffContainer.addUpdated(e.getOid()));
             logAction("INSERT", "pg_class_rep", toAdd.size() + " records inserted", "");
         }
 
         if (!toUpdate.isEmpty()) {
             logger.info("[pg_class_rep] Updating {} records in the replica table", toUpdate.size());
-            toUpdate.forEach(e ->
+            toUpdate.forEach(e -> {
                     logAction("UPDATE", "pg_class_rep", " old: " +
-                                    pgClassRepository.findPGClassReplicationByOid(e.getOid())
-                            , " new:" + e.toString())
-            );
+                                        pgClassRepository.findPGClassReplicationByOid(e.getOid())
+                                , " new:" + e.toString());
+                    diffContainer.addUpdated(e.getOid());
+            });
             replicate(toUpdate, connection);
             logAction("UPDATE", "pg_class_rep", toUpdate.size() + " records updated", "");
         }

@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 
 @Data
 @Entity
-@Table(name = "pg_views_rep")
+@Table(name = "pg_views_rep", schema = "jdata")
 @AllArgsConstructor
 @NoArgsConstructor
 public class PGViewsReplication implements Serializable {

@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 **/
 @Data
 @Entity
-@Table(name = "pg_namespace_rep")
+@Table(name = "pg_namespace_rep", schema = "jdata")
 @AllArgsConstructor
 @NoArgsConstructor
 public class PGNamespaceReplication implements Serializable {

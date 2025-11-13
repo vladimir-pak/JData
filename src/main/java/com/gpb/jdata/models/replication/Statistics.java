@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 
 @Data
 @Entity
-@Table(name = "summary_statistics_rep")
+@Table(name = "summary_statistics_rep", schema = "jdata")
 @AllArgsConstructor
 @NoArgsConstructor
 public class Statistics implements Serializable {

@@ -11,15 +11,20 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.log.SvoiCustomLogger;
+import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.master.PGConstraint;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGConstraintReplication;
@@ -27,6 +32,7 @@ import com.gpb.jdata.models.replication.Statistics;
 import com.gpb.jdata.repository.ActionRepository;
 import com.gpb.jdata.repository.PGConstraintRepository;
 import com.gpb.jdata.service.PGConstraintService;
+import com.gpb.jdata.utils.diff.DiffContainer;
 
 import lombok.RequiredArgsConstructor;
 
@@ -34,11 +40,15 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PGConstraintServiceImpl implements PGConstraintService {
     private static final Logger logger = LoggerFactory.getLogger(PGConstraintService.class);
+    private final SvoiCustomLogger svoiLogger;
 
     private final PGConstraintRepository pgConstraintRepository;
     private final ActionRepository actionRepository;
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
+
+    @Qualifier("pgClassDiffContainer")
+    private final DiffContainer diffContainer;
 
     private long lastTransactionCount = 0;
 
@@ -61,6 +71,11 @@ public class PGConstraintServiceImpl implements PGConstraintService {
      */
     @Override
     public void synchronize() {
+        svoiLogger.send(
+			"startSync", 
+			"Start PGConstraint sync", 
+			"Started PGConstraint sync", 
+			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
             long currentTransactionCount = getTransactionCountMain(connection);
 
@@ -80,6 +95,13 @@ public class PGConstraintServiceImpl implements PGConstraintService {
         } catch (SQLException e) {
             logger.error("[pg_constraint] Error during synchronization", e);
         }
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Void> synchronizeAsync() {
+        synchronize();
+        return CompletableFuture.completedFuture(null);
     }
 
     /**
@@ -161,22 +183,29 @@ public class PGConstraintServiceImpl implements PGConstraintService {
         if (!toDelete.isEmpty()) {
             logger.info("[pg_constraint_rep] Deleting {} records from the replica table", toDelete.size());
             pgConstraintRepository.deleteAllById(toDelete);
+            toDelete.forEach(e -> {
+                    if (!diffContainer.containsInDeletedOids(e)) {
+                        diffContainer.addUpdated(replicationMap.get(e).getConrelid());
+                    }
+            });
             logAction("DELETE", "pg_constraint_rep", toDelete.size() + " records deleted", "");
         }
 
         if (!toAdd.isEmpty()) {
             logger.info("[pg_constraint_rep] Adding {} records to the replica table", toAdd.size());
             replicate(toAdd, connection);
+            toAdd.forEach(e -> diffContainer.addUpdated(e.getConrelid()));
             logAction("INSERT", "pg_constraint_rep", toAdd.size() + " records inserted", "");
         }
 
         if (!toUpdate.isEmpty()) {
             logger.info("[pg_constraint_rep] Updating {} records in the replica table", toUpdate.size());
-            toUpdate.forEach(e ->
+            toUpdate.forEach(e -> {
                     logAction("UPDATE", "pg_constraint_rep", " old: " +
                                     pgConstraintRepository.findById(e.getOid().longValue())
-                            , " new:" + e.toString())
-            );
+                            , " new:" + e.toString());
+                    diffContainer.addUpdated(e.getConrelid());
+            });
             replicate(toUpdate, connection);
             logAction("UPDATE", "pg_constraint_rep", toUpdate.size() + " records updated", "");
         }

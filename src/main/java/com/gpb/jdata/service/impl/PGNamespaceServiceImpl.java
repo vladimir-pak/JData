@@ -16,9 +16,12 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.log.SvoiCustomLogger;
+import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.master.PGNamespace;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGNamespaceReplication;
@@ -26,6 +29,7 @@ import com.gpb.jdata.models.replication.Statistics;
 import com.gpb.jdata.repository.ActionRepository;
 import com.gpb.jdata.repository.PGNamespaceRepository;
 import com.gpb.jdata.service.PGNamespaceService;
+import com.gpb.jdata.utils.diff.DiffContainer;
 
 import lombok.RequiredArgsConstructor;
 
@@ -33,11 +37,15 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PGNamespaceServiceImpl implements PGNamespaceService {
     private static final Logger logger = LoggerFactory.getLogger(PGNamespaceService.class);
+    private final SvoiCustomLogger svoiLogger;
 
     private final PGNamespaceRepository pgNamespaceRepository;
     private final ActionRepository actionRepository;
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
+
+    @Qualifier("pgNamespaceDiffContainer")
+    private final DiffContainer diffContainer;
 
     private long lastTransactionCount = 0;
 
@@ -60,6 +68,11 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
      */
     @Override
     public void synchronize() {
+        svoiLogger.send(
+			"startSync", 
+			"Start PGNamespace sync", 
+			"Started PGNamespace sync", 
+			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
             long currentTransactionCount = getTransactionCountMain(connection);
             if (currentTransactionCount == lastTransactionCount) {
@@ -145,6 +158,10 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
         if (!toDelete.isEmpty()) {
             logger.info("[pg_namespace_rep] Deleting {} records from the replica table", toDelete.size());
             pgNamespaceRepository.deleteAllById(toDelete);
+            toDelete.forEach(e -> {
+                    diffContainer.addDeleted(replicationMap.get(e).getNspname());
+                    diffContainer.addDeletedOids(e);
+            });
             logAction("DELETE", "pg_namespace_rep", toDelete.size() 
                     + " records deleted", "");
         }
@@ -152,17 +169,19 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
         if (!toAdd.isEmpty()) {
             logger.info("[pg_namespace_rep] Adding {} records to the replica table", toAdd.size());
             replicate(toAdd, connection);
+            toAdd.forEach(e -> diffContainer.addUpdated(e.getOid()));
             logAction("INSERT", "pg_namespace_rep", toAdd.size() 
                     + " records inserted", "");
         }
 
         if (!toUpdate.isEmpty()) {
             logger.info("[pg_namespace_rep] Updating {} records in the replica table", toUpdate.size());
-            toUpdate.forEach(e ->
+            toUpdate.forEach(e -> {
                     logAction("UPDATE", "pg_namespace_rep", " old: " +
                                     pgNamespaceRepository.findPGNamespaceReplicationByOid(e.getOid())
-                            , " new:" + e.toString())
-            );
+                            , " new:" + e.toString());
+                    diffContainer.addUpdated(e.getOid());
+            });
             replicate(toUpdate, connection);
             logAction("UPDATE", "pg_namespace_rep", toUpdate.size() 
                     + " records updated", "");

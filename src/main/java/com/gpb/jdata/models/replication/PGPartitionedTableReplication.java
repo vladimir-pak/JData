@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 **/
 @Data
 @Entity
-@Table(name = "pg_partitioned_table_rep")
+@Table(name = "pg_partitioned_table_rep", schema = "jdata")
 @AllArgsConstructor
 @NoArgsConstructor
 public class PGPartitionedTableReplication implements Serializable {

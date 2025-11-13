@@ -60,6 +60,10 @@ ord:
     serviceName: NDP
     dbName: adb
 
+sync:
+  enabled: true
+  interval: 60000
+  
 keycloak:
   server-url: https://auth.example.com/realms/myrealm/protocol/openid-connect/token
   client-id: my-client

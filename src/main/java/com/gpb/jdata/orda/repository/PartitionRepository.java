@@ -34,12 +34,12 @@ public class PartitionRepository {
                  from
                      pg_partition_rep) pt
             join
-                pg_class_rep par
+                jdata.pg_class_rep par
               on par.oid = pt.parrelid
             left join
-                pg_namespace_rep ns on par.relnamespace = ns.oid
+                jdata.pg_namespace_rep ns on par.relnamespace = ns.oid
             left join
-                pg_attribute_rep col
+                jdata.pg_attribute_rep col
               on col.attrelid = par."oid"
              and col.attnum   = pt.column_index
             where par.relname = ? and ns.nspname = ?

@@ -18,7 +18,7 @@ import lombok.NoArgsConstructor;
  */
 @Data
 @Entity
-@Table(name = "pg_description_rep")
+@Table(name = "pg_description_rep", schema = "jdata")
 @AllArgsConstructor
 @NoArgsConstructor
 public class PGDescriptionReplication implements Serializable {

@@ -1,10 +1,11 @@
 package com.gpb.jdata.orda.repository;
 
-import java.util.List;
-import java.util.Map;
-
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+
+import com.gpb.jdata.orda.dto.SchemaDTO;
+import com.gpb.jdata.orda.mapper.SchemaRowMapper;
 
 import lombok.RequiredArgsConstructor;
 
@@ -14,24 +15,24 @@ public class SchemaRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public List<Map<String, Object>> getSchemas() {
+    public SchemaDTO getSchemaByOid(Long oid) {
         String sql = """
-            select sch.nspname as schemaname, dsc.description
-            from pg_namespace_rep sch
-            left join pg_description_rep dsc
-              on sch."oid" = dsc.objoid
-             and dsc.objsubid = 0
+            SELECT sch."oid", sch.nspname as name, dsc.description
+            FROM jdata.pg_namespace_rep sch
+            LEFT JOIN jdata.pg_description_rep dsc
+                ON sch."oid" = dsc.objoid
+                AND dsc.objsubid = 0
+            WHERE sch."oid" = ?
         """;
-        return jdbcTemplate.queryForList(sql);
-    }
-
-    public List<Map<String, Object>> getDeletedSchemas() {
-        String sql = "SELECT nspname FROM pg_namespace_rep WHERE is_deleted = true";
-        return jdbcTemplate.queryForList(sql);
+        try {
+            return jdbcTemplate.queryForObject(sql, new SchemaRowMapper(), oid);
+        } catch (EmptyResultDataAccessException e) {
+            return null; // или throw new EntityNotFoundException("Schema not found with oid: " + oid);
+        }
     }
 
     public String getSchemaNameById(int schemaId) {
-        String sql = "SELECT nspname FROM pg_namespace_rep WHERE oid = ?";
+        String sql = "SELECT nspname FROM jdata.pg_namespace_rep WHERE oid = ?";
         return jdbcTemplate.queryForObject(sql, String.class, schemaId);
     }
 }

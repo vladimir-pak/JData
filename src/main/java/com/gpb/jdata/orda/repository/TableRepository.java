@@ -3,6 +3,7 @@ package com.gpb.jdata.orda.repository;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -14,65 +15,9 @@ public class TableRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public List<Map<String, Object>> getTables(String schemaName) {
+    public List<Map<String, Object>> getTableByOid(Long oid) {
         String sql = """
-            select nsp.db as dbname,
-                   nsp.nspname as dbschema,
-                   dsch.description as dbschema_description,
-                   cl.relname as tablename,
-                   case when part.parrelid is not null then 'Partitioned'
-                        when cl.relkind = 'r' then 'Regular'
-                        when cl.relkind = 'v' then 'View'
-                        when cl.relkind = 'M' then 'View'
-                        when cl.relkind = 'f' then 'Foreign'
-                        else null end as tabletype,
-                   dt.description as table_description,
-                   attr.attname as columnname,
-                   tp.typname as dtype,
-                   attr.atttypmod as dtlength,
-                   attr.attnotnull as notnull,
-                   attr.attnum as attnum,
-                   dat.description as column_description,
-                   case when con.contype = 'p' then con.conkey else null end as pk_constraint,
-                   case when con.contype = 'f' then con.confrelid else null end as foreign_table_id,
-                   case when con.contype = 'f' then con.confkey else null end as fk_constraint,
-                   v.definition as view_definition
-            from pg_class_rep cl
-            join pg_namespace_rep nsp
-              on cl.relnamespace = nsp."oid"
-            left join pg_attribute_rep attr
-              on cl."oid" = attr.attrelid
-            left join pg_constraint_rep con
-              on cl."oid" = con.conrelid
-             and cl.relnamespace = con.connamespace
-            left join pg_type_rep tp
-              on attr.atttypid = tp."oid"
-            left join pg_description_rep dsch
-              on dsch.objoid = nsp."oid"
-             and dsch.objsubid = 0
-            left join pg_description_rep dt
-              on dt.objoid = cl."oid"
-             and dt.objsubid = 0
-            left join pg_description_rep dat
-              on dat.objoid = cl."oid"
-             and dat.objsubid = attr.attnum
-            left join pg_views_rep v
-              on v.schemaname = nsp.nspname
-             and v.viewname   = cl.relname
-             and cl.relkind in ('m','v')
-            left join pg_partition_rep part
-              on part.parrelid = cl."oid"
-            where cl.relkind in ('r','v','m','f','p')
-              and nsp.nspname = ?
-        """;
-        return jdbcTemplate.queryForList(sql, schemaName);
-    }
-
-    public List<Map<String, Object>> getAllTables() {
-        String sql = """
-            select nsp.db as dbname,
-                   nsp.nspname as dbschema,
-                   dsch.description as dbschema_description,
+            select nsp.nspname as dbschema,
                    cl.relname as tablename,
                    case when part.parrelid is not null then 'Partitioned'
                         when cl.relkind = 'r' then 'Regular'
@@ -89,45 +34,47 @@ public class TableRepository {
                    dat.description as column_description,
                    case when con.contype = 'p' then 
                      (select array_agg(pka.attname) 
-                      from pg_attribute_rep pka
+                      from jdata.pg_attribute_rep pka
                       where pka.attrelid = cl."oid"
                       and pka.attnum = any(con.conkey))  else null end as pk_constraint,
                    case when con.contype = 'f' then 
                      (select array_agg(fkn.nspname || '.' || fkc.relname || '.' || fka.attname)
-                      from pg_class_rep fkc
-                      join pg_namespace_rep fkn on fkc.relnamespace = fkn."oid" 
-                      join pg_attribute_rep fka on fkc."oid" = fka.attrelid
+                      from jdata.pg_class_rep fkc
+                      join jdata.pg_namespace_rep fkn on fkc.relnamespace = fkn."oid" 
+                      join jdata.pg_attribute_rep fka on fkc."oid" = fka.attrelid
                       where fkc."oid" = con.confrelid
                       and fka.attnum = any(con.confkey)) else null end as fk_constraint,
                    v.definition as view_definition
-            from pg_class_rep cl
-            join pg_namespace_rep nsp
+            from jdata.pg_class_rep cl
+            join jdata.pg_namespace_rep nsp
               on cl.relnamespace = nsp."oid"
-            left join pg_attribute_rep attr
-              on cl."oid" =attr.attrelid
-            left join pg_constraint_rep con
+            left join jdata.pg_attribute_rep attr
+              on cl."oid" = attr.attrelid
+            left join jdata.pg_constraint_rep con
               on cl."oid" = con.conrelid
              and cl.relnamespace = con.connamespace
-            left join pg_type_rep tp
+            left join jdata.pg_type_rep tp
               on attr.atttypid = tp."oid"
-            left join pg_description_rep dsch
-              on dsch.objoid = nsp."oid"
-             and dsch.objsubid = 0
-            left join pg_description_rep dt
+            left join jdata.pg_description_rep dt
               on dt.objoid = cl."oid"
              and dt.objsubid = 0
-            left join pg_description_rep dat
+            left join jdata.pg_description_rep dat
               on dat.objoid = cl."oid"
              and dat.objsubid = attr.attnum
-            left join pg_views_rep v
+            left join jdata.pg_views_rep v
               on v.schemaname = nsp.nspname
              and v.viewname   = cl.relname
              and cl.relkind in ('m','v')
-            left join pg_partition_rep part
+            left join jdata.pg_partition_rep part
               on part.parrelid = cl."oid"
             where cl.relkind in ('r','v','m','f','p')
+              and cl."oid" = ?
         """;
-        return jdbcTemplate.queryForList(sql);
+        try {
+            return jdbcTemplate.queryForList(sql, oid);
+        } catch (EmptyResultDataAccessException e) {
+            return null; // или throw new EntityNotFoundException("Schema not found with oid: " + oid);
+        }
     }
 
     public List<Map<String, Object>> getTableInfoById(int tableId) {
@@ -139,15 +86,5 @@ public class TableRepository {
             where cl.oid = ?
         """;
         return jdbcTemplate.queryForList(sql, tableId);
-    }
-    
-    public List<Map<String, Object>> getDeletedTables() {
-        String sql = """
-            select nsp.nspname as schemaname, cl.relname as tablename
-            from pg_class_rep cl
-            join pg_namespace_rep nsp on cl.relnamespace = nsp.oid
-            where cl.is_deleted = true
-        """;
-        return jdbcTemplate.queryForList(sql);
     }
 }

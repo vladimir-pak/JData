@@ -36,6 +36,7 @@ and inserting, deleting or updating it in the replica tables.
  */
 @Service
 @RequiredArgsConstructor
+@Deprecated
 public class PGAttrdefServiceImpl implements PGAttrdefService {
 
     private static final Logger logger = LoggerFactory.getLogger(PGAttrdefService.class);

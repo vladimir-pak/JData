@@ -31,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
+@Deprecated
 public class PGDatabaseServiceImpl implements PGDatabaseService {
     private static final Logger logger = LoggerFactory.getLogger(PGDatabaseServiceImpl.class);
     

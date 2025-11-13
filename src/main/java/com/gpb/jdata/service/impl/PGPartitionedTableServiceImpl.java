@@ -31,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
+@Deprecated
 public class PGPartitionedTableServiceImpl implements PGPartitionedTableService {
     private static final Logger logger = LoggerFactory.getLogger(PGPartitionedTableService.class);
 

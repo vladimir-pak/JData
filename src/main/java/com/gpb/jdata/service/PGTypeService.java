@@ -3,11 +3,13 @@ package com.gpb.jdata.service;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import com.gpb.jdata.models.master.PGType;
 
 public interface PGTypeService {
     List<PGType> initialSnapshot(Connection connection) throws SQLException;
     void synchronize();
+    CompletableFuture<Void> synchronizeAsync();
     List<PGType> readMasterData(Connection connection) throws SQLException;
 }

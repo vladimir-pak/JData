@@ -1,5 +1,6 @@
 package com.gpb.jdata.orda.client;
 
+import java.net.URI;
 import java.util.Arrays;
 import java.util.Map;
 
@@ -12,7 +13,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
+import com.gpb.jdata.log.SvoiCustomLogger;
+import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.orda.service.KeycloakAuthService;
 
 import lombok.RequiredArgsConstructor;
@@ -20,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 @Component
 @RequiredArgsConstructor
 public class OrdaClient {
+    private final SvoiCustomLogger svoiLogger;
 
     @Value("${ord.api.baseUrl}")
     private String ordaApiUrl;
@@ -61,6 +66,11 @@ public class OrdaClient {
             HttpHeaders headers = createHeaders();
             HttpEntity<T> request = new HttpEntity<>(body, headers);
             restTemplate.postForObject(url, request, Void.class);
+            svoiLogger.send(
+                "postOrda", 
+                "POST request", 
+                String.format("%s: %s", actionDescription, url), 
+                SvoiSeverityEnum.ONE);
             System.out.println(actionDescription + " выполнено успешно: " + url);
         } catch (Exception e) {
             System.err.println("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
@@ -72,6 +82,11 @@ public class OrdaClient {
             HttpHeaders headers = createHeaders();
             HttpEntity<T> request = new HttpEntity<>(body, headers);
             restTemplate.exchange(url, HttpMethod.PUT, request, Void.class);
+            svoiLogger.send(
+                "putOrda", 
+                "PUT request",
+                String.format("%s: %s", actionDescription, url), 
+                SvoiSeverityEnum.ONE);
             System.out.println(actionDescription + " выполнено успешно: " + url);
         } catch (Exception e) {
             System.err.println("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
@@ -80,7 +95,17 @@ public class OrdaClient {
 
     public void sendDeleteRequest(String url, String actionDescription) {
         try {
-            restTemplate.delete(url);
+            UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url)
+                .queryParam("recursive", "true");
+            URI uri = builder.build().toUri();
+            HttpHeaders headers = createHeaders();
+            HttpEntity<Void> request = new HttpEntity<>(headers);
+            restTemplate.exchange(uri, HttpMethod.DELETE, request, Void.class);
+            svoiLogger.send(
+                "deleteOrda", 
+                "DELETE request",
+                String.format("%s: %s", actionDescription, url), 
+                SvoiSeverityEnum.ONE);
             System.out.println(actionDescription + " выполнено успешно: " + url);
         } catch (HttpClientErrorException e) {
             System.err.println("HTTP ошибка " + e.getStatusCode() 

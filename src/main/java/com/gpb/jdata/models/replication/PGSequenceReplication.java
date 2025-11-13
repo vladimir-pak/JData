@@ -14,7 +14,7 @@ import java.util.Objects;
 
 @Data
 @Entity
-@Table(name = "pg_sequence_rep")
+@Table(name = "pg_sequence_rep", schema = "jdata")
 @AllArgsConstructor
 @NoArgsConstructor
 public class PGSequenceReplication implements Serializable {

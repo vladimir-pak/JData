@@ -9,7 +9,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users", schema = "jdata")
 @Getter
 @Setter
 public class UserEntity {

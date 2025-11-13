@@ -10,15 +10,20 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.log.SvoiCustomLogger;
+import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.master.PGAttribute;
 import com.gpb.jdata.models.master.PGAttributeId;
 import com.gpb.jdata.models.replication.Action;
@@ -27,6 +32,7 @@ import com.gpb.jdata.models.replication.Statistics;
 import com.gpb.jdata.repository.ActionRepository;
 import com.gpb.jdata.repository.PGAttributeRepository;
 import com.gpb.jdata.service.PGAttributeService;
+import com.gpb.jdata.utils.diff.DiffContainer;
 
 import lombok.RequiredArgsConstructor;
 
@@ -38,11 +44,15 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PGAttributeServiceImpl implements PGAttributeService {
     private static final Logger logger = LoggerFactory.getLogger(PGAttributeService.class);
+    private final SvoiCustomLogger svoiLogger;
 
     private final PGAttributeRepository pgAttributeRepository;
     private final ActionRepository actionRepository;
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
+
+    @Qualifier("pgClassDiffContainer")
+    private final DiffContainer diffContainer;
 
     private long lastTransactionCount = 0;
 
@@ -64,6 +74,11 @@ public class PGAttributeServiceImpl implements PGAttributeService {
      */
     @Override
     public void synchronize() {
+        svoiLogger.send(
+			"startSync", 
+			"Start PGAttribute sync", 
+			"Started PGAttribute sync", 
+			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
             long currentTransactionCount = getTransactionCountMain(connection);
 
@@ -82,6 +97,13 @@ public class PGAttributeServiceImpl implements PGAttributeService {
         } catch (SQLException e) {
             logger.error("[pg_attribute] Error during synchronization", e);
         }
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Void> synchronizeAsync() {
+        synchronize();
+        return CompletableFuture.completedFuture(null);
     }
 
     /**
@@ -154,22 +176,29 @@ public class PGAttributeServiceImpl implements PGAttributeService {
         if (!toDelete.isEmpty()) {
             logger.info("[pg_attribute_rep] Deleting {} records from the replica table", toDelete.size());
             pgAttributeRepository.deleteAllById(toDelete);
+            toDelete.forEach(e -> {
+                    if (!diffContainer.containsInDeletedOids(e.getAttrelid())) {
+                        diffContainer.addUpdated(e.getAttrelid());
+                    }
+            });
             logAction("DELETE", "pg_attribute_rep", toDelete.size() + " records deleted", "");
         }
 
         if (!toAdd.isEmpty()) {
             logger.info("[pg_attribute_rep] Adding {} records to the replica table", toAdd.size());
             replicate(toAdd, connection);
+            toAdd.forEach(e -> diffContainer.addUpdated(e.getAttrelid()));
             logAction("INSERT", "pg_attribute_rep", toAdd.size() + " records inserted", "");
         }
 
         if (!toUpdate.isEmpty()) {
             logger.info("[pg_attribute_rep] Updating {} records in the replica table", toUpdate.size());
-            toUpdate.forEach(e ->
+            toUpdate.forEach(e -> {
                     logAction("UPDATE", "pg_attribute_rep", " old: " +
                                     pgAttributeRepository.findPGAttributeReplicationById(new PGAttributeId(e.getAttrelid(), e.getAttname()))
-                            , " new:" + e.toString())
-            );
+                            , " new:" + e.toString());
+                    diffContainer.addUpdated(e.getAttrelid());
+            });
             replicate(toUpdate, connection);
             logAction("UPDATE", "pg_attribute_rep", toUpdate.size() + " records updated", "");
         }

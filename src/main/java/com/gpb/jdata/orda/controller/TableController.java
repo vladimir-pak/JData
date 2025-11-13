@@ -24,12 +24,11 @@ public class TableController {
     private final TableService tableService;
     private final SvoiCustomLogger logger;
     
-    @PostMapping("/sync/{schemaName}")
-    @Operation(summary = "Запуск синхронизации по наименованию схемы")
-    public ResponseEntity<Void> syncTables(@PathVariable String schemaName,
-            HttpServletRequest httpServletRequest) {
+    @PostMapping("/sync")
+    @Operation(summary = "Запуск синхронизации таблиц")
+    public ResponseEntity<Void> syncTables(HttpServletRequest httpServletRequest) {
         logger.logApiCall(httpServletRequest, "SyncTable");
-        tableService.syncTables(schemaName);
+        tableService.syncTables();
         return ResponseEntity.ok().build();
     }
 

@@ -10,15 +10,19 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.log.SvoiCustomLogger;
+import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.master.PGType;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGTypeReplication;
@@ -33,6 +37,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PGTypeServiceImpl implements PGTypeService {
     private static final Logger logger = LoggerFactory.getLogger(PGTypeService.class);
+    private final SvoiCustomLogger svoiLogger;
 
     private final PGTypeRepository pgTypeRepository;
     private final ActionRepository actionRepository;
@@ -60,6 +65,11 @@ public class PGTypeServiceImpl implements PGTypeService {
      */
     @Override
     public void synchronize() {
+        svoiLogger.send(
+			"startSync", 
+			"Start PGType sync", 
+			"Started PGType sync", 
+			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
             long currentTransactionCount = getTransactionCountMain(connection);
             if (currentTransactionCount == lastTransactionCount) {
@@ -78,6 +88,13 @@ public class PGTypeServiceImpl implements PGTypeService {
         }
     }
 
+    @Override
+    @Async
+    public CompletableFuture<Void> synchronizeAsync() {
+        synchronize();
+        return CompletableFuture.completedFuture(null);
+    }
+    
     /**
      * Чтение данных из таблицы pg_type
      */

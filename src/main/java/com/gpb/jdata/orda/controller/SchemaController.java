@@ -28,7 +28,7 @@ public class SchemaController {
     @Operation(summary = "Запуск синхронизации схем базы данных")
     public ResponseEntity<Void> syncSchemas(HttpServletRequest httpServletRequest) {
         logger.logApiCall(httpServletRequest, "SyncSchema");
-        schemaService.syncSchemas();
+        schemaService.syncSchema();
         return ResponseEntity.ok().build();
     }
 

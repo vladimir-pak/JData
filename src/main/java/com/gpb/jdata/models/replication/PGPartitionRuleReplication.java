@@ -14,7 +14,7 @@ import java.util.Objects;
 
 @Data
 @Entity
-@Table(name = "pg_partition_rule_rep")
+@Table(name = "pg_partition_rule_rep", schema = "jdata")
 @AllArgsConstructor
 @NoArgsConstructor
 public class PGPartitionRuleReplication implements Serializable {

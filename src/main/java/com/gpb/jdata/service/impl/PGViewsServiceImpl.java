@@ -9,23 +9,31 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.log.SvoiCustomLogger;
+import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.master.PGViews;
 import com.gpb.jdata.models.master.PGViewsId;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGViewsReplication;
 import com.gpb.jdata.models.replication.Statistics;
 import com.gpb.jdata.repository.ActionRepository;
+import com.gpb.jdata.repository.PGClassRepository;
 import com.gpb.jdata.repository.PGViewsRepository;
 import com.gpb.jdata.service.PGViewsService;
+import com.gpb.jdata.utils.diff.DiffContainer;
 
 import lombok.RequiredArgsConstructor;
 
@@ -33,11 +41,17 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PGViewsServiceImpl implements PGViewsService {
     private static final Logger logger = LoggerFactory.getLogger(PGViewsService.class);
+    private final SvoiCustomLogger svoiLogger;
 
     private final PGViewsRepository pgViewsRepository;
     private final ActionRepository actionRepository;
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
+
+    private final PGClassRepository classRepository;
+
+    @Qualifier("pgClassDiffContainer")
+    private final DiffContainer diffContainer;
 
     /**
      * Создание начального снапшота и запись данных в таблицу репликации
@@ -58,6 +72,11 @@ public class PGViewsServiceImpl implements PGViewsService {
      */
     @Override
     public void synchronize() {
+        svoiLogger.send(
+			"startSync", 
+			"Start PGViews sync", 
+			"Started PGViews sync", 
+			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
         //    long currentTransactionCount = getTransactionCountMain(connection);
 
@@ -75,6 +94,13 @@ public class PGViewsServiceImpl implements PGViewsService {
         } catch (SQLException e) {
             logger.error("[pg_views] Error during synchronization", e);
         }
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Void> synchronizeAsync() {
+        synchronize();
+        return CompletableFuture.completedFuture(null);
     }
 
     /**
@@ -150,6 +176,14 @@ public class PGViewsServiceImpl implements PGViewsService {
         if (!toAdd.isEmpty()) {
             logger.info("[pg_views_rep] Adding {} records to the replica table", toAdd.size());
             replicate(toAdd, connection);
+            toAdd.forEach(e -> {
+                    String fqn = String.format("%s.%s",
+                            e.getId().getSchemaname(), e.getId().getViewname());
+                    Optional<Long> oid = classRepository.findOidByFqn(fqn);
+                    if (oid.isPresent()) {
+                        diffContainer.addUpdated(oid.get());
+                    }
+            });
             logAction("INSERT", "pg_views_rep", toAdd.size() 
                     + " records inserted", "");
         }
@@ -163,6 +197,14 @@ public class PGViewsServiceImpl implements PGViewsService {
 
         //    );
             replicate(toUpdate, connection);
+            toUpdate.forEach(e -> {
+                    String fqn = String.format("%s.%s", 
+                            e.getId().getSchemaname(), e.getId().getViewname());
+                    Optional<Long> oid = classRepository.findOidByFqn(fqn);
+                    if (oid.isPresent()) {
+                        diffContainer.addUpdated(oid.get());
+                    }
+            });
             logAction("UPDATE", "pg_views_rep", toUpdate.size() 
                     + " records updated", "");
         }

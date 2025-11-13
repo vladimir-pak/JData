@@ -35,6 +35,7 @@ import lombok.RequiredArgsConstructor;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@Deprecated
 public class PGSequenceServiceImpl implements PGSequenceService {
     private static final Logger logger = LoggerFactory.getLogger(PGSequenceServiceImpl.class);
 

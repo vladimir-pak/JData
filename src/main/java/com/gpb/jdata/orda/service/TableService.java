@@ -2,8 +2,13 @@ package com.gpb.jdata.orda.service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -15,11 +20,14 @@ import com.gpb.jdata.orda.mapper.TableMapper;
 import com.gpb.jdata.orda.properties.OrdProperties;
 import com.gpb.jdata.orda.repository.PartitionRepository;
 import com.gpb.jdata.orda.repository.TableRepository;
+import com.gpb.jdata.utils.diff.DiffContainer;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TableService {
     @Value("${ord.api.baseUrl}")
     private String ordaApiUrl;
@@ -32,14 +40,33 @@ public class TableService {
 
     private final OrdProperties ordProperties;
 
-    public void syncTables(String schemaName) {
-        List<Map<String, Object>> rows = tableRepository.getTables(schemaName);
-        sendGrouped(rows);
-    }
+    @Qualifier("pgClassDiffContainer")
+    private final DiffContainer diffContainer;
 
-    public void syncAllTables() {
-        List<Map<String, Object>> rows = tableRepository.getAllTables();
-        sendGrouped(rows);
+    public void syncTables() {
+        ExecutorService executor = Executors.newFixedThreadPool(5);
+
+        List<Callable<Void>> tasks = diffContainer.getUpdated().stream()
+            .<Callable<Void>>map(oid -> () -> {
+                try {
+                    List<Map<String, Object>> rows = tableRepository.getTableByOid(oid);
+                    if (rows != null && !rows.isEmpty()) {
+                        sendGrouped(rows);
+                    }
+                } catch (Exception e) {
+                    log.error("Ошибка при обработке таблицы oid={}: {}", oid, e.getMessage(), e);
+                }
+                return null;
+            })
+            .toList();
+        try{
+            executor.invokeAll(tasks, 1, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Ошибка при синхронизации таблицы: {}", e.getMessage());
+        } finally {
+            executor.shutdown();
+        }
     }
 
     private void sendGrouped(List<Map<String, Object>> rows) {
@@ -58,30 +85,24 @@ public class TableService {
         }
     }
 
-    public void handleDeletions() {
-        List<Map<String, Object>> deletedTables = tableRepository.getDeletedTables();
-        for (Map<String, Object> t : deletedTables) {
-            String fqn = String.format("%s.%s.%s", 
-                    ordProperties.getPrefixFqn(), (String)t.get("schemaname"), (String)t.get("tablename"));
-            if (!ordaClient.isProjectEntity(fqn)) {
-                deleteTable(fqn);
-            }
+    public void handleDeleted() {
+        for (String tableName : diffContainer.getDeleted()) {
+            // tableName - schema.tablename
+            deleteTable(tableName);
         }
     }
 
-    public void deleteTable(String fqn) {
+    public void deleteTable(String tableName) {
+        String fqn = String.format("%s.%s", ordProperties.getPrefixFqn(), tableName);
         try {
             String url = ordaApiUrl + TABLE_URL + "/name/" + fqn;
             ordaClient.sendDeleteRequest(url, "Удаление таблицы");
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
-                System.out.println("Таблица не найдена: " + fqn);
+                log.warn("Таблица не найдена: {}", fqn);
             }
         } catch (Exception e) {
-            System.err.println("Ошибка при удалении таблицы: " + e.getMessage());
-            e.printStackTrace();
+            log.error("Ошибка при удалении таблицы: {}", e.getMessage());
         }
     }
-
-    
 }

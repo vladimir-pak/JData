@@ -13,7 +13,7 @@ import java.util.Objects;
 
 @Data
 @Entity
-@Table(name = "pg_type_rep")
+@Table(name = "pg_type_rep", schema = "jdata")
 @AllArgsConstructor
 @NoArgsConstructor
 public class PGTypeReplication implements Serializable {
