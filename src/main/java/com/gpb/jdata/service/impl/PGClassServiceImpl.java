@@ -51,16 +51,24 @@ public class PGClassServiceImpl implements PGClassService {
      * Создание начального снапшота и запись данных в таблицу репликации
      */
     @Override
-    public List<PGClass> initialSnapshot(Connection connection) throws SQLException {
-        List<PGClass> data = readMasterData(connection);
-        logger.info("[pg_class] Initial snapshot created...");
+    public void initialSnapshot() throws SQLException {
+        svoiLogger.send(
+			"startInitSnapshot", 
+			"Start PGClass init", 
+			"Started PGClass init", 
+			SvoiSeverityEnum.ONE);
+        try (Connection connection = databaseConfig.getConnection()) {
+            List<PGClass> data = readMasterData(connection);
+            logger.info("[pg_class] Initial snapshot created...");
 
-        filterData(data);
-        replicate(data, connection);
-        data.forEach(e -> diffContainer.addUpdated(e.getOid()));
-        writeStatistics((long) data.size(), "pg_class", connection);
-        logAction("INITIAL_SNAPSHOT", "pg_class", data.size() + " records added", "");
-        return data;
+            filterData(data);
+            replicate(data, connection);
+            data.forEach(e -> diffContainer.addUpdated(e.getOid()));
+            writeStatistics((long) data.size(), "pg_class", connection);
+            logAction("INITIAL_SNAPSHOT", "pg_class", data.size() + " records added", "");
+        } catch (SQLException e) {
+            logger.error("[pg_class] Error during initialization", e);
+        }
     }
 
     /**

@@ -58,14 +58,29 @@ public class PGDescriptionServiceImpl implements PGDescriptionService {
      */
     @Transactional
     @Override
-    public List<PGDescription> initialSnapshot(Connection connection) throws SQLException {
-        List<PGDescription> data = readMasterData(connection);
-        logger.info("[pg_description] Initial snapshot created...");
+    public void initialSnapshot() throws SQLException {
+        svoiLogger.send(
+			"startInitSnapshot", 
+			"Start PGDescription init", 
+			"Started PGDescription init", 
+			SvoiSeverityEnum.ONE);
+        try (Connection connection = databaseConfig.getConnection()) {
+            List<PGDescription> data = readMasterData(connection);
+            logger.info("[pg_description] Initial snapshot created...");
 
-        replicate(data, connection);
-        writeStatistics((long) data.size(), "pg_description", connection);
-        logAction("INITIAL_SNAPSHOT", "pg_description", data.size() + " records added", "");
-        return data;
+            replicate(data, connection);
+            writeStatistics((long) data.size(), "pg_description", connection);
+            logAction("INITIAL_SNAPSHOT", "pg_description", data.size() + " records added", "");
+        } catch (SQLException e) {
+            logger.error("[pg_description] Error during initialization", e);
+        }
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Void> initialSnapshotAsync() throws SQLException {
+        initialSnapshot();
+        return CompletableFuture.completedFuture(null);
     }
 
     /**

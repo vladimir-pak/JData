@@ -58,13 +58,28 @@ public class PGAttributeServiceImpl implements PGAttributeService {
      * Создание начального снапшота и запись данных в таблицу репликации
      */
     @Override
-    public List<PGAttribute> initialSnapshot(Connection connection) throws SQLException {
-        List<PGAttribute> data = readMasterData(connection);
-        logger.info("[pg_attribute] Initial snapshot created...");
-        replicate(data, connection);
-        writeStatistics((long) data.size(), "pg_attribute", connection);
-        logAction("INITIAL_SNAPSHOT", "pg_attribute", data.size() + " records added", "");
-        return data;
+    public void initialSnapshot() throws SQLException {
+        svoiLogger.send(
+			"startInitSnapshot", 
+			"Start PGAttribute init", 
+			"Started PGAttribute init", 
+			SvoiSeverityEnum.ONE);
+        try (Connection connection = databaseConfig.getConnection()) {
+            List<PGAttribute> data = readMasterData(connection);
+            logger.info("[pg_attribute] Initial snapshot created...");
+            replicate(data, connection);
+            writeStatistics((long) data.size(), "pg_attribute", connection);
+            logAction("INITIAL_SNAPSHOT", "pg_attribute", data.size() + " records added", "");
+        } catch (SQLException e) {
+            logger.error("[pg_attribute] Error during initialization", e);
+        }
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Void> initialSnapshotAsync() throws SQLException {
+        initialSnapshot();
+        return CompletableFuture.completedFuture(null);
     }
 
     /**

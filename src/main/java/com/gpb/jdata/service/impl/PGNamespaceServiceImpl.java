@@ -51,15 +51,23 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
      * Создание начального снапшота и запись данных в таблицу репликации
      */
     @Override
-    public List<PGNamespace> initialSnapshot(Connection connection) throws SQLException {
-        List<PGNamespace> data = readMasterData(connection);
-        logger.info("[pg_namespace] Initial snapshot created...");
-        replicate(data, connection);
-        writeStatistics((long) data.size(), "pg_namespace", connection);
-        data.forEach(e -> diffContainer.addUpdated(e.getOid()));
-        logAction("INITIAL_SNAPSHOT", "pg_namespace", 
-                data.size() + " records added", "");
-        return data;
+    public void initialSnapshot() throws SQLException {
+        svoiLogger.send(
+			"startInitSnapshot", 
+			"Start PGNamespace init", 
+			"Started PGNamespace init", 
+			SvoiSeverityEnum.ONE);
+        try (Connection connection = databaseConfig.getConnection()) {
+            List<PGNamespace> data = readMasterData(connection);
+            logger.info("[pg_namespace] Initial snapshot created...");
+            replicate(data, connection);
+            writeStatistics((long) data.size(), "pg_namespace", connection);
+            data.forEach(e -> diffContainer.addUpdated(e.getOid()));
+            logAction("INITIAL_SNAPSHOT", "pg_namespace", 
+                    data.size() + " records added", "");
+        } catch (SQLException e) {
+            logger.error("[pg_namespace] Error during initialization", e);
+        }
     }
 
     /**

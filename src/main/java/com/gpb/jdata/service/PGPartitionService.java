@@ -9,7 +9,8 @@ import com.gpb.jdata.models.master.PGPartition;
 
 public interface PGPartitionService {
     void replicate(List<PGPartition> data, Connection connection) throws SQLException;
-    List<PGPartition> initialSnapshot(Connection connection) throws SQLException;
+    void initialSnapshot() throws SQLException;
+    CompletableFuture<Void> initialSnapshotAsync() throws SQLException;
     void synchronize();
     CompletableFuture<Void> synchronizeAsync();
 }

@@ -8,7 +8,8 @@ import java.util.concurrent.CompletableFuture;
 import com.gpb.jdata.models.master.PGConstraint;
 
 public interface PGConstraintService {
-    List<PGConstraint> initialSnapshot(Connection connection) throws SQLException;
+    void initialSnapshot() throws SQLException;
+    CompletableFuture<Void> initialSnapshotAsync() throws SQLException;
     void synchronize();
     CompletableFuture<Void> synchronizeAsync();
     List<PGConstraint> readMasterData(Connection connection) throws SQLException;

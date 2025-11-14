@@ -55,14 +55,29 @@ public class PGViewsServiceImpl implements PGViewsService {
      * Создание начального снапшота и запись данных в таблицу репликации
      */
     @Override
-    public List<PGViews> initialSnapshot(Connection connection) throws SQLException {
-        List<PGViews> data = readMasterData(connection);
-        logger.info("[pg_views] Initial snapshot created...");
-        replicate(data, connection);
-        writeStatistics((long) data.size(), "pg_views", connection);
-        logAction("INITIAL_SNAPSHOT", "pg_views", data.size() 
-                + " records added", "");
-        return data;
+    public void initialSnapshot() throws SQLException {
+        svoiLogger.send(
+			"startInitSnapshot", 
+			"Start PGViews init", 
+			"Started PGViews init", 
+			SvoiSeverityEnum.ONE);
+        try (Connection connection = databaseConfig.getConnection()) {
+            List<PGViews> data = readMasterData(connection);
+            logger.info("[pg_views] Initial snapshot created...");
+            replicate(data, connection);
+            writeStatistics((long) data.size(), "pg_views", connection);
+            logAction("INITIAL_SNAPSHOT", "pg_views", data.size() 
+                    + " records added", "");
+        } catch (SQLException e) {
+            logger.error("[pg_views] Error during initialization", e);
+        }
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Void> initialSnapshotAsync() throws SQLException {
+        initialSnapshot();
+        return CompletableFuture.completedFuture(null);
     }
 
     /**

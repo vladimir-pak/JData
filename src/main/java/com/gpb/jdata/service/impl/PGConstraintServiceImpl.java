@@ -54,14 +54,29 @@ public class PGConstraintServiceImpl implements PGConstraintService {
      * Создание начального снапшота и запись данных в таблицу репликации
      */
     @Override
-    public List<PGConstraint> initialSnapshot(Connection connection) throws SQLException {
-        List<PGConstraint> data = readMasterData(connection);
-        logger.info("[pg_constraint] Initial snapshot created...");
+    public void initialSnapshot() throws SQLException {
+        svoiLogger.send(
+			"startInitSnapshot", 
+			"Start PGConstraint init", 
+			"Started PGConstraint init", 
+			SvoiSeverityEnum.ONE);
+        try (Connection connection = databaseConfig.getConnection()) {
+            List<PGConstraint> data = readMasterData(connection);
+            logger.info("[pg_constraint] Initial snapshot created...");
 
-        replicate(data, connection);
-        writeStatistics((long) data.size(), "pg_constraint", connection);
-        logAction("INITIAL_SNAPSHOT", "pg_constraint", data.size() + " records added", "");
-        return data;
+            replicate(data, connection);
+            writeStatistics((long) data.size(), "pg_constraint", connection);
+            logAction("INITIAL_SNAPSHOT", "pg_constraint", data.size() + " records added", "");
+        } catch (SQLException e) {
+            logger.error("[pg_constraint] Error during initialization", e);
+        }
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Void> initialSnapshotAsync() throws SQLException {
+        initialSnapshot();
+        return CompletableFuture.completedFuture(null);
     }
 
     /**

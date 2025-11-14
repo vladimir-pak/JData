@@ -8,7 +8,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -20,7 +19,7 @@ import com.gpb.jdata.orda.mapper.TableMapper;
 import com.gpb.jdata.orda.properties.OrdProperties;
 import com.gpb.jdata.orda.repository.PartitionRepository;
 import com.gpb.jdata.orda.repository.TableRepository;
-import com.gpb.jdata.utils.diff.DiffContainer;
+import com.gpb.jdata.utils.diff.ClassDiffContainer;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,8 +39,7 @@ public class TableService {
 
     private final OrdProperties ordProperties;
 
-    @Qualifier("pgClassDiffContainer")
-    private final DiffContainer diffContainer;
+    private final ClassDiffContainer diffContainer;
 
     public void syncTables() {
         ExecutorService executor = Executors.newFixedThreadPool(5);

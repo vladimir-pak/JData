@@ -9,15 +9,19 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.log.SvoiCustomLogger;
+import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.master.PGDatabase;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGDatabaseReplication;
@@ -34,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 @Deprecated
 public class PGDatabaseServiceImpl implements PGDatabaseService {
     private static final Logger logger = LoggerFactory.getLogger(PGDatabaseServiceImpl.class);
+    private final SvoiCustomLogger svoiLogger;
     
     private final PGDatabaseRepository pgDatabaseRepository;
     private final ActionRepository actionRepository;
@@ -42,16 +47,36 @@ public class PGDatabaseServiceImpl implements PGDatabaseService {
 
     @Override
     @Transactional
-    public List<PGDatabase> initialSnapshot(Connection connection) throws SQLException {
-        List<PGDatabase> data = readMasterData(connection);
-        replicate(data, connection);
-        writeStatistics((long) data.size(), "pg_database", connection);
-        logAction("INITIAL_SNAPSHOT", "pg_database", data.size() + " records added", "");
-        return data;
+    public void initialSnapshot() throws SQLException {
+        svoiLogger.send(
+			"startInitSnapshot", 
+			"Start PGDatabase init", 
+			"Started PGDatabase init", 
+			SvoiSeverityEnum.ONE);
+        try (Connection connection = databaseConfig.getConnection()) {
+            List<PGDatabase> data = readMasterData(connection);
+            replicate(data, connection);
+            writeStatistics((long) data.size(), "pg_database", connection);
+            logAction("INITIAL_SNAPSHOT", "pg_database", data.size() + " records added", "");
+        } catch (SQLException e) {
+            logger.error("[pg_database] Error during initialization", e);
+        }
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Void> initialSnapshotAsync() throws SQLException {
+        initialSnapshot();
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
     public void synchronize() {
+        svoiLogger.send(
+			"startSync", 
+			"Start PGDatabase sync", 
+			"Started PGDatabase sync", 
+			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
             long currentTransactionCount = getTransactionCount(connection);
             List<PGDatabase> newData = readMasterData(connection);

@@ -6,7 +6,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,7 +15,7 @@ import com.gpb.jdata.orda.client.OrdaClient;
 import com.gpb.jdata.orda.dto.SchemaDTO;
 import com.gpb.jdata.orda.properties.OrdProperties;
 import com.gpb.jdata.orda.repository.SchemaRepository;
-import com.gpb.jdata.utils.diff.DiffContainer;
+import com.gpb.jdata.utils.diff.NamespaceDiffContainer;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,8 +34,7 @@ public class SchemaService {
     private final OrdaClient ordaClient;
     private final OrdProperties ordProperties;
 
-    @Qualifier("pgNamespaceDiffContainer")
-    private final DiffContainer diffNamespace;
+    private final NamespaceDiffContainer diffNamespace;
 
     /*
      * Новый метод. Обрабатывает только разницу snapshot

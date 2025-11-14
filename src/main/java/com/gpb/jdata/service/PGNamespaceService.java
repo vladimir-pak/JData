@@ -7,7 +7,7 @@ import java.util.List;
 import com.gpb.jdata.models.master.PGNamespace;
 
 public interface PGNamespaceService {
-    List<PGNamespace> initialSnapshot(Connection connection) throws SQLException;
+    void initialSnapshot() throws SQLException;
     void synchronize();
     List<PGNamespace> readMasterData(Connection connection) throws SQLException;
 }

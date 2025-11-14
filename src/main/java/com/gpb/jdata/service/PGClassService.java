@@ -8,6 +8,6 @@ import com.gpb.jdata.models.master.PGClass;
 
 public interface PGClassService {
     void replicate(List<PGClass> data, Connection connection) throws SQLException;
-    List<PGClass> initialSnapshot(Connection connection) throws SQLException;
+    void initialSnapshot() throws SQLException;
     void synchronize();
 }

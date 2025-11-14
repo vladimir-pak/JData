@@ -2,7 +2,6 @@ package com.gpb.jdata.utils;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -16,7 +15,8 @@ import com.gpb.jdata.service.PGNamespaceService;
 import com.gpb.jdata.service.PGPartitionService;
 import com.gpb.jdata.service.PGTypeService;
 import com.gpb.jdata.service.PGViewsService;
-import com.gpb.jdata.utils.diff.DiffContainer;
+import com.gpb.jdata.utils.diff.ClassDiffContainer;
+import com.gpb.jdata.utils.diff.NamespaceDiffContainer;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -40,10 +40,8 @@ public class Init {
 
     private final MetadataService metadataService;
 
-    @Qualifier("pgClassDiffContainer")
-    private final DiffContainer diffClassContainer;
-    @Qualifier("pgNamespaceDiffContainer")
-    private final DiffContainer diffNamespaceContainer;
+    private final ClassDiffContainer diffClassContainer;
+    private final NamespaceDiffContainer diffNamespaceContainer;
 
     /**
      * Метод проверяет раз в interval миллисекунд, можно ли запустить синхронизацию.

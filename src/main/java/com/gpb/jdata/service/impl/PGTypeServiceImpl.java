@@ -50,14 +50,29 @@ public class PGTypeServiceImpl implements PGTypeService {
      * Создание начального снапшота и запись данных в таблицу репликации
      */
     @Override
-    public List<PGType> initialSnapshot(Connection connection) throws SQLException {
-        List<PGType> data = readMasterData(connection);
-        logger.info("[pg_type] Initial snapshot created...");
-        replicate(data, connection);
-        writeStatistics((long) data.size(), "pg_type", connection);
-        logAction("INITIAL_SNAPSHOT", "pg_type", data.size() 
-                + " records added", "");
-        return data;
+    public void initialSnapshot() throws SQLException {
+        svoiLogger.send(
+			"startInitSnapshot", 
+			"Start PGType init", 
+			"Started PGType init", 
+			SvoiSeverityEnum.ONE);
+        try (Connection connection = databaseConfig.getConnection()) {
+            List<PGType> data = readMasterData(connection);
+            logger.info("[pg_type] Initial snapshot created...");
+            replicate(data, connection);
+            writeStatistics((long) data.size(), "pg_type", connection);
+            logAction("INITIAL_SNAPSHOT", "pg_type", data.size() 
+                    + " records added", "");
+        } catch (SQLException e) {
+            logger.error("[pg_type] Error during initialization", e);
+        }
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Void> initialSnapshotAsync() throws SQLException {
+        initialSnapshot();
+        return CompletableFuture.completedFuture(null);
     }
 
     /**

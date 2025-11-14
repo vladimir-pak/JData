@@ -55,14 +55,29 @@ public class PGPartitionServiceImpl implements PGPartitionService {
      */
     @Transactional
     @Override
-    public List<PGPartition> initialSnapshot(Connection connection) throws SQLException {
-        List<PGPartition> data = readMasterData(connection);
-        logger.info("[pg_partition] Initial snapshot created...");
-        replicate(data, connection);
-        writeStatistics((long) data.size(), "pg_partition", connection);
-        logAction("INITIAL_SNAPSHOT", "pg_partition", data.size() 
-                + " records added", "");
-        return data;
+    public void initialSnapshot() throws SQLException {
+        svoiLogger.send(
+			"startInitSnapshot", 
+			"Start PGPartition init", 
+			"Started PGPartition init", 
+			SvoiSeverityEnum.ONE);
+        try (Connection connection = databaseConfig.getConnection()) {
+            List<PGPartition> data = readMasterData(connection);
+            logger.info("[pg_partition] Initial snapshot created...");
+            replicate(data, connection);
+            writeStatistics((long) data.size(), "pg_partition", connection);
+            logAction("INITIAL_SNAPSHOT", "pg_partition", data.size() 
+                    + " records added", "");
+        } catch (SQLException e) {
+            logger.error("[pg_partition] Error during initialization", e);
+        }
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Void> initialSnapshotAsync() throws SQLException {
+        initialSnapshot();
+        return CompletableFuture.completedFuture(null);
     }
 
     /**
