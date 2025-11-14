@@ -21,15 +21,13 @@ public class DatabaseController {
     
     private final DatabaseService databaseService;
     private final SvoiCustomLogger logger;
-
-    public static final String ADB_DATABASE_NAME = "adb";
     
     @GetMapping("/check-and-create")
     @Operation(summary = "Создание базы данных")
     public ResponseEntity<String> checkAndCreateDatabase(HttpServletRequest httpServletRequest) {
         logger.logApiCall(httpServletRequest, "CreateDatabase");
         try {
-            databaseService.checkAndCreateDatabase(ADB_DATABASE_NAME);
+            databaseService.checkAndCreateDatabase();
             return ResponseEntity.ok("Database 'adb' is ready.");
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("Error: " + e.getMessage());

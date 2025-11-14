@@ -59,6 +59,7 @@ public class PGClassServiceImpl implements PGClassService {
 
         filterData(data);
         replicate(data, connection);
+        data.forEach(e -> diffContainer.addUpdated(e.getOid()));
         writeStatistics((long) data.size(), "pg_class", connection);
         logAction("INITIAL_SNAPSHOT", "pg_class", data.size() + " records added", "");
         return data;

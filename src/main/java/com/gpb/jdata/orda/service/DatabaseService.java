@@ -21,16 +21,18 @@ public class DatabaseService {
     private final OrdProperties ordProperties;
     private final OrdaClient ordaClient;
 
-    private boolean checkDatabaseExists(String databaseName) {
+    private boolean checkDatabaseExists() {
         String fqn = ordProperties.getPrefixFqn();
-        String url = ordaApiUrl + "databases/name/" + fqn + databaseName;
+        String url = ordaApiUrl + "databases/name/" + fqn;
         return ordaClient.checkEntityExists(url, "База данных");
     }
 
-    private void createDatabase(String databaseName) {
+    private void createDatabase() {
         String url = ordaApiUrl + DATABASE_URL;
         DatabaseDTO body = DatabaseDTO.builder()
-                .name(databaseName)
+                .name(ordProperties.getDbName())
+                .displayName(ordProperties.getDbName())
+                .service(ordProperties.getServiceName())
                 .build();
         ordaClient.sendPostRequest(url, body, "Создание базы данных");
     }
@@ -39,9 +41,9 @@ public class DatabaseService {
      * Проверка наличия БД в ОРДе.
      * Создание в случае отсутствия.
      */
-    public void checkAndCreateDatabase(String databaseName) {
-        if (!checkDatabaseExists(databaseName)) {
-            createDatabase(databaseName);
+    public void checkAndCreateDatabase() {
+        if (!checkDatabaseExists()) {
+            createDatabase();
         }
     }
     

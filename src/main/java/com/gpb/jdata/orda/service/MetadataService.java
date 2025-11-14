@@ -9,11 +9,13 @@ import lombok.RequiredArgsConstructor;
 public class MetadataService {
     private final SchemaService schemaService;
     private final TableService tableService;
+    private final DatabaseService databaseService;
     
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(MetadataService.class);
 
     public void syncMetadata() {
         try {
+            databaseService.checkAndCreateDatabase();
             syncSchemas();
             syncTables();
             handleDeletions();

@@ -58,6 +58,7 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
         logger.info("[pg_namespace] Initial snapshot created...");
         replicate(data, connection);
         writeStatistics((long) data.size(), "pg_namespace", connection);
+        data.forEach(e -> diffContainer.addUpdated(e.getOid()));
         logAction("INITIAL_SNAPSHOT", "pg_namespace", 
                 data.size() + " records added", "");
         return data;
