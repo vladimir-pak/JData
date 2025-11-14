@@ -17,7 +17,6 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -32,7 +31,7 @@ import com.gpb.jdata.models.replication.Statistics;
 import com.gpb.jdata.repository.ActionRepository;
 import com.gpb.jdata.repository.PGAttributeRepository;
 import com.gpb.jdata.service.PGAttributeService;
-import com.gpb.jdata.utils.diff.DiffContainer;
+import com.gpb.jdata.utils.diff.NamespaceDiffContainer;
 
 import lombok.RequiredArgsConstructor;
 
@@ -51,8 +50,7 @@ public class PGAttributeServiceImpl implements PGAttributeService {
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
 
-    @Qualifier("pgClassDiffContainer")
-    private final DiffContainer diffContainer;
+    private final NamespaceDiffContainer diffContainer;
 
     private long lastTransactionCount = 0;
 

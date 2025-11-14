@@ -17,7 +17,6 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -33,7 +32,7 @@ import com.gpb.jdata.repository.ActionRepository;
 import com.gpb.jdata.repository.PGClassRepository;
 import com.gpb.jdata.repository.PGViewsRepository;
 import com.gpb.jdata.service.PGViewsService;
-import com.gpb.jdata.utils.diff.DiffContainer;
+import com.gpb.jdata.utils.diff.ClassDiffContainer;
 
 import lombok.RequiredArgsConstructor;
 
@@ -50,8 +49,7 @@ public class PGViewsServiceImpl implements PGViewsService {
 
     private final PGClassRepository classRepository;
 
-    @Qualifier("pgClassDiffContainer")
-    private final DiffContainer diffContainer;
+    private final ClassDiffContainer diffContainer;
 
     /**
      * Создание начального снапшота и запись данных в таблицу репликации
