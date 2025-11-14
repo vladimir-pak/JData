@@ -51,7 +51,7 @@ public class PGPartitionReplication implements Serializable {
 	 * Номера партиционирующих столбцов
 	 **/
 	@Column(name = "paratts")
-	private Integer[] paratts;
+	private int[] paratts;
 
 	/**
 	 * Название базы данных

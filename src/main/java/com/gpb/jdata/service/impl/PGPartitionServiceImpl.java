@@ -1,5 +1,6 @@
 package com.gpb.jdata.service.impl;
 
+import java.sql.Array;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -8,6 +9,7 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -122,14 +124,23 @@ public class PGPartitionServiceImpl implements PGPartitionService {
         List<PGPartition> data = new ArrayList<>();
         String sql = "SELECT oid, parrelid, parnatts, parkind, paratts FROM pg_catalog.pg_partition";
         try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+            ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
+                Array parattsArray = rs.getArray("paratts");
+                int[] paratts = null;
+                
+                if (parattsArray != null) {
+                    paratts = Arrays.stream((Short[]) parattsArray.getArray())
+                            .mapToInt(Short::intValue)
+                            .toArray();
+                }
+                
                 PGPartition p = new PGPartition(
                         rs.getLong("oid"),
                         rs.getLong("parrelid"),
                         rs.getInt("parnatts"),
                         rs.getString("parkind"),
-                        (Integer[]) rs.getArray("paratts").getArray()
+                        paratts  // может быть null, если parattsArray был null
                 );
                 data.add(p);
             }

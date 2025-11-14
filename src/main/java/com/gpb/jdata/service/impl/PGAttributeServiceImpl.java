@@ -1,5 +1,7 @@
 package com.gpb.jdata.service.impl;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -8,13 +10,17 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.postgresql.PGConnection;
+import org.postgresql.copy.CopyManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -31,6 +37,8 @@ import com.gpb.jdata.models.replication.Statistics;
 import com.gpb.jdata.repository.ActionRepository;
 import com.gpb.jdata.repository.PGAttributeRepository;
 import com.gpb.jdata.service.PGAttributeService;
+import com.gpb.jdata.utils.IteratorStringInputStream;
+import com.gpb.jdata.utils.ResultSetIterator;
 import com.gpb.jdata.utils.diff.NamespaceDiffContainer;
 
 import lombok.RequiredArgsConstructor;
@@ -56,22 +64,34 @@ public class PGAttributeServiceImpl implements PGAttributeService {
 
     /**
      * Создание начального снапшота и запись данных в таблицу репликации
+     * Для инициализирующей загрузки используется иной способ репликации - через copy from
      */
     @Override
     public void initialSnapshot() throws SQLException {
         svoiLogger.send(
-			"startInitSnapshot", 
-			"Start PGAttribute init", 
-			"Started PGAttribute init", 
-			SvoiSeverityEnum.ONE);
+                "startInitSnapshot",
+                "Start PGAttribute init",
+                "Started PGAttribute init",
+                SvoiSeverityEnum.ONE);
+
         try (Connection connection = databaseConfig.getConnection()) {
-            List<PGAttribute> data = readMasterData(connection);
-            logger.info("[pg_attribute] Initial snapshot created...");
-            replicate(data, connection);
-            writeStatistics((long) data.size(), "pg_attribute", connection);
-            logAction("INITIAL_SNAPSHOT", "pg_attribute", data.size() + " records added", "");
-        } catch (SQLException e) {
-            logger.error("[pg_attribute] Error during initialization", e);
+            logger.info("[pg_attribute] Starting initial snapshot (streaming COPY)...");
+            String query = """
+                    SELECT attrelid, attnum, attname, atthasdef, attnotnull, atttypid, atttypmod
+                    FROM pg_catalog.pg_attribute
+                    """;
+
+            long inserted = streamCopyFromResultSet(query, connection, this::serializeRowFromResultSet);
+
+            writeStatistics(inserted, "pg_attribute_rep", connection);
+            logAction("INITIAL_SNAPSHOT", "pg_attribute", 
+                    inserted + " records added", "");
+
+            logger.info("[pg_attribute] Initial snapshot finished. Inserted: {}", inserted);
+        } catch (SQLException | IOException e) {
+            logger.error("[pg_attribute] Error during initial snapshot", e);
+            throw (e instanceof SQLException) ? (SQLException) e : 
+                    new SQLException("Initial snapshot failed", e);
         }
     }
 
@@ -96,7 +116,8 @@ public class PGAttributeServiceImpl implements PGAttributeService {
             long currentTransactionCount = getTransactionCountMain(connection);
 
             if (currentTransactionCount == lastTransactionCount) {
-                logger.info("[pg_attribute] {} No changes detected. Skipping synchronization.", currentTransactionCount);
+                logger.info("[pg_attribute] {} No changes detected. Skipping synchronization.", 
+                        currentTransactionCount);
                 return;
             }
 
@@ -144,29 +165,136 @@ public class PGAttributeServiceImpl implements PGAttributeService {
     }
 
     /**
+     * Выполняет streaming COPY: читает ResultSet по query и посылает строки в COPY без удерживания всего набора в памяти.
+     *
+     * @return количество вставленных строк (CopyManager возвращает long)
+     */
+    private long streamCopyFromResultSet(String query, Connection connection, Function<ResultSet, String> serializer)
+            throws SQLException, IOException {
+
+        Statement stmt = null;
+        ResultSet rs = null;
+        InputStream inputStream = null;
+
+        try {
+            // Используем forward-only и fetchSize для стриминга больших наборов
+            stmt = connection.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+            // Для PostgreSQL fetchSize > 0 переключает серверный курсор и позволяет стримить
+            stmt.setFetchSize(10_000);
+
+            rs = stmt.executeQuery(query);
+
+            Iterator<ResultSet> rsIterator = new ResultSetIterator(rs);
+            // Преобразуем итератор ResultSet в Iterator<String> через serializer (строка в формате COPY)
+            Iterator<String> lineIterator = new Iterator<>() {
+                @Override
+                public boolean hasNext() {
+                    return rsIterator.hasNext();
+                }
+
+                @Override
+                public String next() {
+                    ResultSet r = rsIterator.next();
+                    return serializer.apply(r);
+                }
+            };
+
+            inputStream = new IteratorStringInputStream(lineIterator);
+
+            PGConnection pgConnection = connection.unwrap(PGConnection.class);
+            CopyManager copyManager = pgConnection.getCopyAPI();
+
+            String sql = """
+                    COPY jdata.pg_attribute_rep (attrelid, attnum, attname, atthasdef, 
+                    attnotnull, atttypid, atttypmod)
+                    FROM STDIN WITH (FORMAT text)
+                    """;
+
+            logger.info("[pg_attribute_rep] Starting COPY FROM STDIN...");
+            long rows = copyManager.copyIn(sql, inputStream);
+            logger.info("[pg_attribute_rep] COPY finished, rows inserted: {}", rows);
+
+            return rows;
+
+        } finally {
+            // Закрываем InputStream прежде чем закрыть ResultSet/Statement.
+            // CopyManager.copyIn прочитает весь inputStream до конца (или бросит исключение).
+            if (inputStream != null) {
+                try {
+                    inputStream.close();
+                } catch (IOException ex) {
+                    logger.warn("Failed to close input stream after COPY", ex);
+                }
+            }
+            if (rs != null) {
+                try {
+                    rs.close();
+                } catch (SQLException ex) {
+                    logger.warn("Failed to close ResultSet", ex);
+                }
+            }
+            if (stmt != null) {
+                try {
+                    stmt.close();
+                } catch (SQLException ex) {
+                    logger.warn("Failed to close Statement", ex);
+                }
+            }
+        }
+    }
+
+    /**
+     * Сериализация одной строки для COPY в текстовом формате (TAB-separated).
+     * Формат: col1\tcol2\t...\tcolN\n
+     * NULL -> \N
+     * boolean -> t/f
+     */
+    private String serializeRowFromResultSet(ResultSet rs) {
+        try {
+            long attrelid = rs.getLong("attrelid");
+            long attnum = rs.getLong("attnum");
+            String attname = rs.getString("attname");
+            boolean atthasdef = rs.getBoolean("atthasdef");
+            boolean attnotnull = rs.getBoolean("attnotnull");
+            long atttypid = rs.getLong("atttypid");
+            int atttypmod = rs.getInt("atttypmod");
+
+            StringBuilder sb = new StringBuilder(128);
+            sb.append(escape(attrelid)).append('\t');
+            sb.append(escape(attnum)).append('\t');
+            sb.append(escape(attname)).append('\t');
+            sb.append(atthasdef ? "t" : "f").append('\t');
+            sb.append(attnotnull ? "t" : "f").append('\t');
+            sb.append(escape(atttypid)).append('\t');
+            sb.append(escape(atttypmod)).append('\n');
+
+            return sb.toString();
+        } catch (SQLException e) {
+            logger.error("Error serializing ResultSet row", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    private String escape(Object v) {
+        if (v == null) return "\\N";
+        String s = String.valueOf(v);
+        // Простейшее экранирование для COPY text
+        return s.replace("\\", "\\\\")
+                .replace("\t", "\\t")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
+    }
+
+    /**
      * Репликация данных в таблицу репликации
      */
-    private void replicate(List<PGAttribute> data, Connection connection) throws SQLException {
-        int batchSize = 10000;
-    
+    private void replicate(List<PGAttribute> data, Connection connection) throws SQLException {    
         List<PGAttributeReplication> replicationData = data.parallelStream()
                 .map(d -> convertToReplication(d, "adb"))
                 .collect(Collectors.toList());
 
         if (replicationData != null && !replicationData.isEmpty()) {
-            // Пакетное сохранение
-            for (int i = 0; i < replicationData.size(); i += batchSize) {
-                int end = Math.min(i + batchSize, replicationData.size());
-                List<PGAttributeReplication> batch = replicationData.subList(i, end);
-                if (!batch.isEmpty()) {
-                    pgAttributeRepository.saveAll(batch);
-                }
-                
-                if (i % 100000 == 0) { // Логирование прогресса
-                    logger.info("[pg_attribute_rep] Processed {}/{} records", i, replicationData.size());
-                }
-            }
-            
+            pgAttributeRepository.saveAll(replicationData);
             logger.info("[pg_attribute_rep] Data replicated successfully.");
             writeStatistics((long) replicationData.size(), "pg_attribute_rep", connection);
         } else {

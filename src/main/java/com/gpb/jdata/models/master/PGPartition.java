@@ -35,7 +35,7 @@ public class PGPartition implements Serializable {
 	 **/
     private String parkind;
 
-    private Integer[] paratts;
+    private int[] paratts;
 
     @Override
     public String toString() {

@@ -23,6 +23,7 @@ public class MetadataSnaphostService {
     private final PGTypeService pgTypeService;
     private final PGViewsService pgViewsService;
     private final PGPartitionService pgPartitionService;
+    private final PGDatabaseService pgDatabaseService;
 
     private final MetadataService metadataService;
 
@@ -46,9 +47,10 @@ public class MetadataSnaphostService {
             CompletableFuture<Void> f4 = pgTypeService.initialSnapshotAsync();
             CompletableFuture<Void> f5 = pgAttributeService.initialSnapshotAsync();
             CompletableFuture<Void> f6 = pgPartitionService.initialSnapshotAsync();
+            CompletableFuture<Void> f7 = pgDatabaseService.initialSnapshotAsync();
 
             // Ждем завершения всех задач
-            CompletableFuture.allOf(f1, f2, f3, f4, f5, f6).join();
+            CompletableFuture.allOf(f1, f2, f3, f4, f5, f6, f7).join();
 
             metadataService.syncMetadata();
 
