@@ -3,6 +3,7 @@ package com.gpb.jdata.service.impl;
 import java.io.IOException;
 import java.io.InputStream;
 import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -34,6 +35,7 @@ import com.gpb.jdata.models.master.PGAttributeId;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGAttributeReplication;
 import com.gpb.jdata.models.replication.Statistics;
+import com.gpb.jdata.properties.JdataDbProperties;
 import com.gpb.jdata.repository.ActionRepository;
 import com.gpb.jdata.repository.PGAttributeRepository;
 import com.gpb.jdata.service.PGAttributeService;
@@ -57,6 +59,7 @@ public class PGAttributeServiceImpl implements PGAttributeService {
     private final ActionRepository actionRepository;
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
+    private final JdataDbProperties jdataDbProperties;
 
     private final NamespaceDiffContainer diffContainer;
 
@@ -81,7 +84,8 @@ public class PGAttributeServiceImpl implements PGAttributeService {
                     FROM pg_catalog.pg_attribute
                     """;
 
-            long inserted = streamCopyFromResultSet(query, connection, this::serializeRowFromResultSet);
+            long inserted = streamCopyToExternalDatabase(
+                    query, connection, this::serializeRowFromResultSet, jdataDbProperties);
 
             writeStatistics(inserted, "pg_attribute_rep", connection);
             logAction("INITIAL_SNAPSHOT", "pg_attribute", 
@@ -169,23 +173,32 @@ public class PGAttributeServiceImpl implements PGAttributeService {
      *
      * @return количество вставленных строк (CopyManager возвращает long)
      */
-    private long streamCopyFromResultSet(String query, Connection connection, Function<ResultSet, String> serializer)
-            throws SQLException, IOException {
+    public long streamCopyToExternalDatabase(
+            String query,
+            Connection sourceConnection,
+            Function<ResultSet, String> serializer,
+            JdataDbProperties jdataDbProperties
+    ) throws SQLException, IOException {
 
         Statement stmt = null;
         ResultSet rs = null;
         InputStream inputStream = null;
 
+        // Создаём соединение с JDATA
+        Connection targetConnection = null;
+
         try {
-            // Используем forward-only и fetchSize для стриминга больших наборов
-            stmt = connection.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-            // Для PostgreSQL fetchSize > 0 переключает серверный курсор и позволяет стримить
+            // 1. Настраиваем SOURCE ResultSet как streaming cursor (важно!)
+            stmt = sourceConnection.createStatement(
+                    ResultSet.TYPE_FORWARD_ONLY,
+                    ResultSet.CONCUR_READ_ONLY
+            );
             stmt.setFetchSize(10_000);
 
             rs = stmt.executeQuery(query);
 
             Iterator<ResultSet> rsIterator = new ResultSetIterator(rs);
-            // Преобразуем итератор ResultSet в Iterator<String> через serializer (строка в формате COPY)
+
             Iterator<String> lineIterator = new Iterator<>() {
                 @Override
                 public boolean hasNext() {
@@ -194,51 +207,51 @@ public class PGAttributeServiceImpl implements PGAttributeService {
 
                 @Override
                 public String next() {
-                    ResultSet r = rsIterator.next();
-                    return serializer.apply(r);
+                    return serializer.apply(rsIterator.next());
                 }
             };
 
             inputStream = new IteratorStringInputStream(lineIterator);
 
-            PGConnection pgConnection = connection.unwrap(PGConnection.class);
-            CopyManager copyManager = pgConnection.getCopyAPI();
+            // 2. Открываем TARGET соединение (куда будем делать COPY)
+            targetConnection = DriverManager.getConnection(
+                    jdataDbProperties.getUrl(),
+                    jdataDbProperties.getUsername(),
+                    jdataDbProperties.getPassword()
+            );
+
+            PGConnection pgTarget = targetConnection.unwrap(PGConnection.class);
+            CopyManager copyManager = pgTarget.getCopyAPI();
 
             String sql = """
-                    COPY jdata.pg_attribute_rep (attrelid, attnum, attname, atthasdef, 
-                    attnotnull, atttypid, atttypmod)
+                    COPY jdata.pg_attribute_rep (
+                        attrelid, attnum, attname, atthasdef,
+                        attnotnull, atttypid, atttypmod
+                    )
                     FROM STDIN WITH (FORMAT text)
                     """;
 
-            logger.info("[pg_attribute_rep] Starting COPY FROM STDIN...");
+            logger.info("[pg_attribute_rep] Starting COPY to external DB...");
+
             long rows = copyManager.copyIn(sql, inputStream);
-            logger.info("[pg_attribute_rep] COPY finished, rows inserted: {}", rows);
+
+            logger.info("[pg_attribute_rep] COPY finished. Inserted: {}", rows);
 
             return rows;
 
         } finally {
-            // Закрываем InputStream прежде чем закрыть ResultSet/Statement.
-            // CopyManager.copyIn прочитает весь inputStream до конца (или бросит исключение).
+
             if (inputStream != null) {
-                try {
-                    inputStream.close();
-                } catch (IOException ex) {
-                    logger.warn("Failed to close input stream after COPY", ex);
-                }
+                try { inputStream.close(); } catch (IOException ignore) {}
             }
             if (rs != null) {
-                try {
-                    rs.close();
-                } catch (SQLException ex) {
-                    logger.warn("Failed to close ResultSet", ex);
-                }
+                try { rs.close(); } catch (SQLException ignore) {}
             }
             if (stmt != null) {
-                try {
-                    stmt.close();
-                } catch (SQLException ex) {
-                    logger.warn("Failed to close Statement", ex);
-                }
+                try { stmt.close(); } catch (SQLException ignore) {}
+            }
+            if (targetConnection != null) {
+                try { targetConnection.close(); } catch (SQLException ignore) {}
             }
         }
     }
