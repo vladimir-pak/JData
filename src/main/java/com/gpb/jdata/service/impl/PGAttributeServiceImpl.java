@@ -147,12 +147,26 @@ public class PGAttributeServiceImpl implements PGAttributeService {
      * Репликация данных в таблицу репликации
      */
     private void replicate(List<PGAttribute> data, Connection connection) throws SQLException {
+        int batchSize = 10000;
+    
         List<PGAttributeReplication> replicationData = data.parallelStream()
                 .map(d -> convertToReplication(d, "adb"))
                 .collect(Collectors.toList());
 
         if (replicationData != null && !replicationData.isEmpty()) {
-            pgAttributeRepository.saveAll(replicationData);
+            // Пакетное сохранение
+            for (int i = 0; i < replicationData.size(); i += batchSize) {
+                int end = Math.min(i + batchSize, replicationData.size());
+                List<PGAttributeReplication> batch = replicationData.subList(i, end);
+                if (!batch.isEmpty()) {
+                    pgAttributeRepository.saveAll(batch);
+                }
+                
+                if (i % 100000 == 0) { // Логирование прогресса
+                    logger.info("[pg_attribute_rep] Processed {}/{} records", i, replicationData.size());
+                }
+            }
+            
             logger.info("[pg_attribute_rep] Data replicated successfully.");
             writeStatistics((long) replicationData.size(), "pg_attribute_rep", connection);
         } else {
