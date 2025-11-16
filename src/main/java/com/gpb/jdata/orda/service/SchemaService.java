@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 
@@ -43,7 +44,8 @@ public class SchemaService {
         String url = ordaApiUrl + SCHEMA_URL;
         ExecutorService executor = Executors.newFixedThreadPool(5);
 
-        List<Callable<Void>> tasks = diffNamespace.getUpdated().stream()
+        try {
+            List<Callable<Void>> tasks = diffNamespace.getUpdated().stream()
             .<Callable<Void>>map(oid -> () -> {
                 SchemaDTO body = schemaRepository.getSchemaByOid(oid);
                 body.setDatabase(String.format("%s.%s", ordProperties.getPrefixFqn(), body.getName()));
@@ -51,11 +53,13 @@ public class SchemaService {
                 return null;
             })
             .toList();
-        try {
+        
             executor.invokeAll(tasks, 1, TimeUnit.MINUTES);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("Ошибка при синхронизации схем: " + e.getMessage());
+        } catch (BadSqlGrammarException e) {
+            throw e;
         } finally {
             executor.shutdown();
         }

@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 
@@ -44,24 +45,26 @@ public class TableService {
     public void syncTables() {
         ExecutorService executor = Executors.newFixedThreadPool(5);
 
-        List<Callable<Void>> tasks = diffContainer.getUpdated().stream()
-            .<Callable<Void>>map(oid -> () -> {
-                try {
-                    List<Map<String, Object>> rows = tableRepository.getTableByOid(oid);
-                    if (rows != null && !rows.isEmpty()) {
-                        sendGrouped(rows);
+        try {
+            List<Callable<Void>> tasks = diffContainer.getUpdated().stream()
+                .<Callable<Void>>map(oid -> () -> {
+                    try {
+                        List<Map<String, Object>> rows = tableRepository.getTableByOid(oid);
+                        if (rows != null && !rows.isEmpty()) {
+                            sendGrouped(rows);
+                        }
+                    } catch (Exception e) {
+                        log.error("Ошибка при обработке таблицы oid={}: {}", oid, e.getMessage(), e);
                     }
-                } catch (Exception e) {
-                    log.error("Ошибка при обработке таблицы oid={}: {}", oid, e.getMessage(), e);
-                }
-                return null;
-            })
-            .toList();
-        try{
+                    return null;
+                })
+                .toList();
             executor.invokeAll(tasks, 1, TimeUnit.MINUTES);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("Ошибка при синхронизации таблицы: {}", e.getMessage());
+        } catch (BadSqlGrammarException e) {
+            throw e;
         } finally {
             executor.shutdown();
         }

@@ -1,9 +1,7 @@
 package com.gpb.jdata.service.impl;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -11,17 +9,12 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.postgresql.PGConnection;
-import org.postgresql.copy.CopyManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -35,12 +28,10 @@ import com.gpb.jdata.models.master.PGAttributeId;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGAttributeReplication;
 import com.gpb.jdata.models.replication.Statistics;
-import com.gpb.jdata.properties.JdataDbProperties;
 import com.gpb.jdata.repository.ActionRepository;
 import com.gpb.jdata.repository.PGAttributeRepository;
 import com.gpb.jdata.service.PGAttributeService;
-import com.gpb.jdata.utils.IteratorStringInputStream;
-import com.gpb.jdata.utils.ResultSetIterator;
+import com.gpb.jdata.utils.PostgresCopyStreamer;
 import com.gpb.jdata.utils.diff.NamespaceDiffContainer;
 
 import lombok.RequiredArgsConstructor;
@@ -59,9 +50,30 @@ public class PGAttributeServiceImpl implements PGAttributeService {
     private final ActionRepository actionRepository;
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
-    private final JdataDbProperties jdataDbProperties;
+
+    private final PostgresCopyStreamer postgresCopyStreamer;
 
     private final NamespaceDiffContainer diffContainer;
+
+    private final static String masterQuery = """
+                    SELECT attrelid, attnum, attname, atthasdef, attnotnull, atttypid, atttypmod
+                    FROM pg_catalog.pg_attribute
+                    """;
+    private final static String initialCopySql = """
+                    COPY jdata.pg_attribute_rep (
+                        attrelid, attnum, attname, atthasdef,
+                        attnotnull, atttypid, atttypmod
+                    )
+                    FROM STDIN WITH (FORMAT text)
+                    """;
+    private final static String copySql = """
+                    COPY jdata.pg_attribute_rep_tmp (
+                        attrelid, attnum, attname, atthasdef,
+                        attnotnull, atttypid, atttypmod
+                    )
+                    FROM STDIN WITH (FORMAT text)
+                    """;
+    
 
     private long lastTransactionCount = 0;
 
@@ -79,13 +91,9 @@ public class PGAttributeServiceImpl implements PGAttributeService {
 
         try (Connection connection = databaseConfig.getConnection()) {
             logger.info("[pg_attribute] Starting initial snapshot (streaming COPY)...");
-            String query = """
-                    SELECT attrelid, attnum, attname, atthasdef, attnotnull, atttypid, atttypmod
-                    FROM pg_catalog.pg_attribute
-                    """;
-
-            long inserted = streamCopyToExternalDatabase(
-                    query, connection, this::serializeRowFromResultSet, jdataDbProperties);
+            
+            long inserted = postgresCopyStreamer.streamCopy(
+                    masterQuery, this::serializeRowFromResultSet, initialCopySql);
 
             writeStatistics(inserted, "pg_attribute_rep", connection);
             logAction("INITIAL_SNAPSHOT", "pg_attribute", 
@@ -109,8 +117,36 @@ public class PGAttributeServiceImpl implements PGAttributeService {
     /**
      * Периодическая синхронизация данных
      */
+    // @Override
+    // public void synchronize() {
+    //     svoiLogger.send(
+	// 		"startSync", 
+	// 		"Start PGAttribute sync", 
+	// 		"Started PGAttribute sync", 
+	// 		SvoiSeverityEnum.ONE);
+    //     try (Connection connection = databaseConfig.getConnection()) {
+    //         long currentTransactionCount = getTransactionCountMain(connection);
+
+    //         if (currentTransactionCount == lastTransactionCount) {
+    //             logger.info("[pg_attribute] {} No changes detected. Skipping synchronization.", 
+    //                     currentTransactionCount);
+    //             return;
+    //         }
+
+    //         long diff = currentTransactionCount - lastTransactionCount;
+    //         logger.info("[pg_attribute] {} Changes detected. Starting synchronization...", diff);
+
+    //         List<PGAttribute> newData = readMasterData(connection);
+    //         compareSnapshots(newData, connection);
+    //         lastTransactionCount = currentTransactionCount;
+    //         writeStatistics(currentTransactionCount, "pg_attribute", connection);
+    //     } catch (SQLException e) {
+    //         logger.error("[pg_attribute] Error during synchronization", e);
+    //     }
+    // }
+
     @Override
-    public void synchronize() {
+    public void synchronize() throws SQLException {
         svoiLogger.send(
 			"startSync", 
 			"Start PGAttribute sync", 
@@ -128,18 +164,24 @@ public class PGAttributeServiceImpl implements PGAttributeService {
             long diff = currentTransactionCount - lastTransactionCount;
             logger.info("[pg_attribute] {} Changes detected. Starting synchronization...", diff);
 
-            List<PGAttribute> newData = readMasterData(connection);
-            compareSnapshots(newData, connection);
+            postgresCopyStreamer.streamCopy(
+                    masterQuery, this::serializeRowFromResultSet, copySql);
+
+            // List<PGAttribute> newData = readMasterData(connection);
+
+            compareSnapshots();
             lastTransactionCount = currentTransactionCount;
             writeStatistics(currentTransactionCount, "pg_attribute", connection);
-        } catch (SQLException e) {
+        } catch (SQLException | IOException e) {
             logger.error("[pg_attribute] Error during synchronization", e);
+            throw (e instanceof SQLException) ? (SQLException) e : 
+                    new SQLException("Synchronization failed", e);
         }
     }
 
     @Override
     @Async
-    public CompletableFuture<Void> synchronizeAsync() {
+    public CompletableFuture<Void> synchronizeAsync() throws SQLException {
         synchronize();
         return CompletableFuture.completedFuture(null);
     }
@@ -166,94 +208,6 @@ public class PGAttributeServiceImpl implements PGAttributeService {
             }
         }
         return masterData;
-    }
-
-    /**
-     * Выполняет streaming COPY: читает ResultSet по query и посылает строки в COPY без удерживания всего набора в памяти.
-     *
-     * @return количество вставленных строк (CopyManager возвращает long)
-     */
-    public long streamCopyToExternalDatabase(
-            String query,
-            Connection sourceConnection,
-            Function<ResultSet, String> serializer,
-            JdataDbProperties jdataDbProperties
-    ) throws SQLException, IOException {
-
-        Statement stmt = null;
-        ResultSet rs = null;
-        InputStream inputStream = null;
-
-        // Создаём соединение с JDATA
-        Connection targetConnection = null;
-
-        try {
-            // 1. Настраиваем SOURCE ResultSet как streaming cursor (важно!)
-            stmt = sourceConnection.createStatement(
-                    ResultSet.TYPE_FORWARD_ONLY,
-                    ResultSet.CONCUR_READ_ONLY
-            );
-            stmt.setFetchSize(10_000);
-
-            rs = stmt.executeQuery(query);
-
-            Iterator<ResultSet> rsIterator = new ResultSetIterator(rs);
-
-            Iterator<String> lineIterator = new Iterator<>() {
-                @Override
-                public boolean hasNext() {
-                    return rsIterator.hasNext();
-                }
-
-                @Override
-                public String next() {
-                    return serializer.apply(rsIterator.next());
-                }
-            };
-
-            inputStream = new IteratorStringInputStream(lineIterator);
-
-            // 2. Открываем TARGET соединение (куда будем делать COPY)
-            targetConnection = DriverManager.getConnection(
-                    jdataDbProperties.getUrl(),
-                    jdataDbProperties.getUsername(),
-                    jdataDbProperties.getPassword()
-            );
-
-            PGConnection pgTarget = targetConnection.unwrap(PGConnection.class);
-            CopyManager copyManager = pgTarget.getCopyAPI();
-
-            String sql = """
-                    COPY jdata.pg_attribute_rep (
-                        attrelid, attnum, attname, atthasdef,
-                        attnotnull, atttypid, atttypmod
-                    )
-                    FROM STDIN WITH (FORMAT text)
-                    """;
-
-            logger.info("[pg_attribute_rep] Starting COPY to external DB...");
-
-            long rows = copyManager.copyIn(sql, inputStream);
-
-            logger.info("[pg_attribute_rep] COPY finished. Inserted: {}", rows);
-
-            return rows;
-
-        } finally {
-
-            if (inputStream != null) {
-                try { inputStream.close(); } catch (IOException ignore) {}
-            }
-            if (rs != null) {
-                try { rs.close(); } catch (SQLException ignore) {}
-            }
-            if (stmt != null) {
-                try { stmt.close(); } catch (SQLException ignore) {}
-            }
-            if (targetConnection != null) {
-                try { targetConnection.close(); } catch (SQLException ignore) {}
-            }
-        }
     }
 
     /**
@@ -299,80 +253,55 @@ public class PGAttributeServiceImpl implements PGAttributeService {
     }
 
     /**
-     * Репликация данных в таблицу репликации
-     */
-    private void replicate(List<PGAttribute> data, Connection connection) throws SQLException {    
-        List<PGAttributeReplication> replicationData = data.parallelStream()
-                .map(d -> convertToReplication(d, "adb"))
-                .collect(Collectors.toList());
-
-        if (replicationData != null && !replicationData.isEmpty()) {
-            pgAttributeRepository.saveAll(replicationData);
-            logger.info("[pg_attribute_rep] Data replicated successfully.");
-            writeStatistics((long) replicationData.size(), "pg_attribute_rep", connection);
-        } else {
-            logger.info("[pg_attribute_rep] Data is empty.");
-        }
-    }
-
-    /**
      * Сравнение снапшотов
      */
-    private void compareSnapshots(List<PGAttribute> newData, Connection connection) throws SQLException {
-        List<PGAttributeReplication> replicationData = pgAttributeRepository.findAll();
-        Map<PGAttributeId, PGAttributeReplication> replicationMap = replicationData.parallelStream()
-                .collect(Collectors.toMap(PGAttributeReplication::getId, r -> r));
-
-        List<PGAttribute> toAdd = new ArrayList<>();
-        List<PGAttribute> toUpdate = new ArrayList<>();
-        List<PGAttributeId> toDelete = new ArrayList<>(replicationMap.keySet());
-
-        newData.parallelStream().forEach( masterRecord -> {
-            PGAttributeId id = new PGAttributeId(masterRecord.getAttrelid(), masterRecord.getAttname());
-            PGAttributeReplication replicationRecord = replicationMap.get(id);
-
-            if (replicationRecord == null) {
-                toAdd.add(masterRecord);
-            } else {
-                if (!convertToReplication(masterRecord, "adb").equals(replicationRecord)) {
-                    toUpdate.add(masterRecord);
-                }
-                toDelete.remove(id);
-            }
-        });
+    private void compareSnapshots() throws SQLException {
+        List<PGAttributeReplication> toAdd = pgAttributeRepository.findNew();
+        List<PGAttributeReplication> toUpdate = pgAttributeRepository.findUpdated();
+        List<PGAttributeReplication> toDelete = pgAttributeRepository.findDeleted();
+        List<PGAttributeId> idsToDelete = toDelete.stream()
+                .map(r -> r.getId())
+                .collect(Collectors.toList());
 
         if (!toDelete.isEmpty()) {
             logger.info("[pg_attribute_rep] Deleting {} records from the replica table", toDelete.size());
-            pgAttributeRepository.deleteAllById(toDelete);
-            toDelete.forEach(e -> {
+            pgAttributeRepository.deleteAllById(idsToDelete);
+            idsToDelete.forEach(e -> {
                     if (!diffContainer.containsInDeletedOids(e.getAttrelid())) {
                         diffContainer.addUpdated(e.getAttrelid());
                     }
             });
-            logAction("DELETE", "pg_attribute_rep", toDelete.size() + " records deleted", "");
+            logAction("DELETE", "pg_attribute_rep", toDelete.size() 
+                    + " records deleted", "");
         }
 
         if (!toAdd.isEmpty()) {
             logger.info("[pg_attribute_rep] Adding {} records to the replica table", toAdd.size());
-            replicate(toAdd, connection);
-            toAdd.forEach(e -> diffContainer.addUpdated(e.getAttrelid()));
-            logAction("INSERT", "pg_attribute_rep", toAdd.size() + " records inserted", "");
+            // replicate(toAdd, connection);
+            pgAttributeRepository.saveAll(toAdd);
+            toAdd.forEach(e -> diffContainer.addUpdated(e.getId().getAttrelid()));
+            logAction("INSERT", "pg_attribute_rep", toAdd.size() 
+                    + " records inserted", "");
         }
 
         if (!toUpdate.isEmpty()) {
             logger.info("[pg_attribute_rep] Updating {} records in the replica table", toUpdate.size());
             toUpdate.forEach(e -> {
-                    logAction("UPDATE", "pg_attribute_rep", " old: " +
-                                    pgAttributeRepository.findPGAttributeReplicationById(new PGAttributeId(e.getAttrelid(), e.getAttname()))
-                            , " new:" + e.toString());
-                    diffContainer.addUpdated(e.getAttrelid());
+                    // logAction("UPDATE", "pg_attribute_rep", " old: " +
+                    //                 pgAttributeRepository.findPGAttributeReplicationById(e.getId())
+                    //         , " new:" + e.toString());
+                    diffContainer.addUpdated(e.getId().getAttrelid());
             });
-            replicate(toUpdate, connection);
-            logAction("UPDATE", "pg_attribute_rep", toUpdate.size() + " records updated", "");
+            pgAttributeRepository.saveAll(toUpdate);
+            // replicate(toUpdate, connection);
+            logAction("UPDATE", "pg_attribute_rep", toUpdate.size() 
+                    + " records updated", "");
         }
 
         long totalOperations = toAdd.size() + toUpdate.size() + toDelete.size();
-        writeStatistics(totalOperations, "pg_attribute_rep", connection);
+        try (Connection connection = databaseConfig.getConnection()) {
+            writeStatistics(totalOperations, "pg_attribute_rep", connection);
+        }
     }
 
     /**
@@ -393,22 +322,6 @@ public class PGAttributeServiceImpl implements PGAttributeService {
             }
         }
         throw new SQLException("Failed to retrieve transaction count");
-    }
-
-    /**
-     * Конвертация объекта
-     */
-    private PGAttributeReplication convertToReplication(PGAttribute pgAttribute, String db) {
-        PGAttributeId id = new PGAttributeId(pgAttribute.getAttrelid(), pgAttribute.getAttname());
-        PGAttributeReplication replication = new PGAttributeReplication();
-        replication.setId(id);
-        replication.setAttnum(pgAttribute.getAttnum());
-        replication.setAtthasdef(pgAttribute.isAtthasdef());
-        replication.setAttnotnull(pgAttribute.isAttnotnull());
-        replication.setAtttypid(pgAttribute.getAtttypid());
-        replication.setAtttypmod(pgAttribute.getAtttypmod());
-        replication.setDb(db);
-        return replication;
     }
 
     /**

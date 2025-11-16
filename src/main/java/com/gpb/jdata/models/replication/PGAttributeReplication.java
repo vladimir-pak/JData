@@ -58,19 +58,19 @@ public class PGAttributeReplication implements Serializable {
 	@Column(name = "atttypmod")
 	private int atttypmod;
 
-	@Column(name = "db")
-	private String db;
+	// @Column(name = "db")
+	// private String db;
 
     @Override
 	public boolean equals(Object o) {
 		if (this == o) return true;
 		if (o == null || getClass() != o.getClass()) return false;
 		PGAttributeReplication that = (PGAttributeReplication) o;
-		return atthasdef == that.atthasdef && attnotnull == that.attnotnull && atttypmod == that.atttypmod && Objects.equals(id, that.id) && Objects.equals(attnum, that.attnum) && Objects.equals(atttypid, that.atttypid) && Objects.equals(db, that.db);
+		return atthasdef == that.atthasdef && attnotnull == that.attnotnull && atttypmod == that.atttypmod && Objects.equals(id, that.id) && Objects.equals(attnum, that.attnum) && Objects.equals(atttypid, that.atttypid);
 	}
 	@Override
 	public int hashCode() {
-		return Objects.hash(id, attnum, atthasdef, attnotnull, atttypid, atttypmod, db);
+		return Objects.hash(id, attnum, atthasdef, attnotnull, atttypid, atttypmod);
 	}
 
     @Override
@@ -80,15 +80,13 @@ public class PGAttributeReplication implements Serializable {
                 + ", atthasdef='%s'"
                 + ", attnotnull=%s"
                 + ", atttypid=%s"
-                + ", atttypmod=%s"
-                + ", db='%s'}",
+                + ", atttypmod=%s}",
                 id,
                 attnum,
                 atthasdef,
                 attnotnull,
                 atttypid,
-                atttypmod,
-                db
+                atttypmod
                 );
     }
 }
