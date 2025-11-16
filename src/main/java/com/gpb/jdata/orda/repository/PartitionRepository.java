@@ -3,16 +3,18 @@ package com.gpb.jdata.orda.repository;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import lombok.RequiredArgsConstructor;
-
 @Repository
-@RequiredArgsConstructor
 public class PartitionRepository {
 
     private final JdbcTemplate jdbcTemplate;
+
+    public PartitionRepository(@Qualifier("jdataDataSource") JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
 
     public List<Map<String, Object>> getPartitions(String schemaName, String tableName) {
         String sql = """

@@ -55,6 +55,7 @@ public class TableService {
                         }
                     } catch (Exception e) {
                         log.error("Ошибка при обработке таблицы oid={}: {}", oid, e.getMessage(), e);
+                        throw e;
                     }
                     return null;
                 })

@@ -7,5 +7,5 @@ CREATE TABLE IF NOT EXISTS jdata.pg_attribute_rep_tmp (
 	atttypid int8 NULL,
 	attname varchar(255) NOT NULL,
 	db varchar(255) NULL,
-	CONSTRAINT pg_attribute_rep_pkey PRIMARY KEY (attrelid, attname)
+	CONSTRAINT pg_attribute_rep_tmp_pkey PRIMARY KEY (attrelid, attname)
 );

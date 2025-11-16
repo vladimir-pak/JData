@@ -33,7 +33,7 @@ public class AppConfig {
 
     private final JdataDbProperties dbProperties;
 
-    @Bean
+    @Bean(name = "jdataDataSource")
     @Primary
     public DataSource dataSource() {
         HikariDataSource dataSource = new HikariDataSource();

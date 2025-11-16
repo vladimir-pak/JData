@@ -103,34 +103,34 @@ public final class PostgresCopyStreamer {
     // ========= Вспомогательный итератор ResultSet ========= //
 
     private static class ResultSetIterator implements Iterator<ResultSet> {
-        private final ResultSet rs;
-        private boolean hasNext;
+    private final ResultSet rs;
+    private boolean hasNextChecked = false;
 
-        public ResultSetIterator(ResultSet rs) {
-            this.rs = rs;
-            advance();
-        }
+    public ResultSetIterator(ResultSet rs) {
+        this.rs = rs;
+    }
 
-        private void advance() {
+    @Override
+    public boolean hasNext() {
+        if (!hasNextChecked) {
             try {
-                hasNext = rs.next();
+                hasNextChecked = rs.next();
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
         }
-
-        @Override
-        public boolean hasNext() {
-            return hasNext;
-        }
-
-        @Override
-        public ResultSet next() {
-            ResultSet current = rs;
-            advance();
-            return current;
-        }
+        return hasNextChecked;
     }
+
+    @Override
+    public ResultSet next() {
+        if (!hasNextChecked && !hasNext()) {
+            throw new IllegalStateException("No more elements");
+        }
+        hasNextChecked = false; // сбрасываем для следующего вызова
+        return rs;
+    }
+}
 
     // ========= Поток, читающий строки из итератора ========= //
 

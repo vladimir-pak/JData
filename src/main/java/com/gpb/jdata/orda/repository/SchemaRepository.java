@@ -1,5 +1,6 @@
 package com.gpb.jdata.orda.repository;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -7,13 +8,14 @@ import org.springframework.stereotype.Repository;
 import com.gpb.jdata.orda.dto.SchemaDTO;
 import com.gpb.jdata.orda.mapper.SchemaRowMapper;
 
-import lombok.RequiredArgsConstructor;
-
 @Repository
-@RequiredArgsConstructor
 public class SchemaRepository {
 
     private final JdbcTemplate jdbcTemplate;
+
+    public SchemaRepository(@Qualifier("jdataDataSource") JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
 
     public SchemaDTO getSchemaByOid(Long oid) {
         String sql = """
