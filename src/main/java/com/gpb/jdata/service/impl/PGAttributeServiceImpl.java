@@ -163,7 +163,7 @@ public class PGAttributeServiceImpl implements PGAttributeService {
 
             long diff = currentTransactionCount - lastTransactionCount;
             logger.info("[pg_attribute] {} Changes detected. Starting synchronization...", diff);
-
+            pgAttributeRepository.truncateTempTable();
             postgresCopyStreamer.streamCopy(
                     masterQuery, this::serializeRowFromResultSet, copySql);
 

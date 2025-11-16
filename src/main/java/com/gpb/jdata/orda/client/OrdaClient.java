@@ -56,7 +56,7 @@ public class OrdaClient {
                 return true;
             }
         } catch (Exception e) {
-            System.err.println("Ошибка при проверке существования " + entityName + ": " + url + ". " + e.getMessage());
+            System.err.println("Ошибка при проверке существования " + entityName + ": " + url + " " + e.getMessage());
         }
         return false;
     }

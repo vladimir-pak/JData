@@ -33,7 +33,7 @@ public class AppConfig {
 
     private final JdataDbProperties dbProperties;
 
-    @Bean(name = "jdataDataSource")
+    @Bean
     @Primary
     public DataSource dataSource() {
         HikariDataSource dataSource = new HikariDataSource();
@@ -70,7 +70,7 @@ public class AppConfig {
         return new JpaTransactionManager();
     }
 
-    @Bean
+    @Bean(name = "jdataDataSource")
     @Primary
     public JdbcTemplate jdbcTemplate(DataSource dataSource) {
         return new JdbcTemplate(dataSource);

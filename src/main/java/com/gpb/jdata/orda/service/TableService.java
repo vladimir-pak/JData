@@ -3,8 +3,11 @@ package com.gpb.jdata.orda.service;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -42,32 +45,75 @@ public class TableService {
 
     private final ClassDiffContainer diffContainer;
 
+    // public void syncTables() {
+    //     ExecutorService executor = Executors.newFixedThreadPool(5);
+
+    //     try {
+    //         List<Callable<Void>> tasks = diffContainer.getUpdated().stream()
+    //             .<Callable<Void>>map(oid -> () -> {
+    //                 try {
+    //                     List<Map<String, Object>> rows = tableRepository.getTableByOid(oid);
+    //                     if (rows != null && !rows.isEmpty()) {
+    //                         sendGrouped(rows);
+    //                     }
+    //                 } catch (Exception e) {
+    //                     log.error("Ошибка при обработке таблицы oid={}: {}", oid, e.getMessage(), e);
+    //                     break;
+    //                 }
+    //                 return null;
+    //             })
+    //             .toList();
+    //         executor.invokeAll(tasks, 1, TimeUnit.MINUTES);
+    //     } catch (InterruptedException e) {
+    //         Thread.currentThread().interrupt();
+    //         log.error("Ошибка при синхронизации таблицы: {}", e.getMessage());
+    //     } catch (BadSqlGrammarException e) {
+    //         throw e;
+    //     } finally {
+    //         executor.shutdown();
+    //     }
+    // }
     public void syncTables() {
-        ExecutorService executor = Executors.newFixedThreadPool(5);
+        int poolSize = 5;
+        ExecutorService executor = Executors.newFixedThreadPool(poolSize);
 
         try {
+            // Формируем задачи
             List<Callable<Void>> tasks = diffContainer.getUpdated().stream()
-                .<Callable<Void>>map(oid -> () -> {
-                    try {
+                    .<Callable<Void>>map(oid -> () -> {
                         List<Map<String, Object>> rows = tableRepository.getTableByOid(oid);
                         if (rows != null && !rows.isEmpty()) {
                             sendGrouped(rows);
                         }
-                    } catch (Exception e) {
-                        log.error("Ошибка при обработке таблицы oid={}: {}", oid, e.getMessage(), e);
-                        throw e;
+                        return null;
+                    })
+                    .toList();
+
+            // invokeAll возвращает список Future
+            List<Future<Void>> futures = executor.invokeAll(tasks, 1, TimeUnit.MINUTES);
+
+            for (Future<Void> future : futures) {
+                try {
+                    future.get(); // выбросит ExecutionException если задача упала
+                } catch (ExecutionException e) {
+                    // Прерываем все остальные задачи
+                    for (Future<Void> f : futures) {
+                        f.cancel(true);
                     }
-                    return null;
-                })
-                .toList();
-            executor.invokeAll(tasks, 1, TimeUnit.MINUTES);
+                    throw new RuntimeException(e.getCause());
+                }catch (CancellationException e) {
+                    log.warn("Задача была отменена из-за ошибки в другой задаче");
+                }
+            }
+
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("Ошибка при синхронизации таблицы: {}", e.getMessage());
-        } catch (BadSqlGrammarException e) {
-            throw e;
+            log.error("Синхронизация прервана: {}", e.getMessage(), e);
+        } catch (Exception e) {
+            log.error("Ошибка при синхронизации таблицы: {}", e.getMessage(), e);
+            throw new RuntimeException(e);
         } finally {
-            executor.shutdown();
+            executor.shutdownNow();
         }
     }
 

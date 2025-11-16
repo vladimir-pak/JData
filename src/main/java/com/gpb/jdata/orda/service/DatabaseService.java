@@ -23,7 +23,7 @@ public class DatabaseService {
 
     private boolean checkDatabaseExists() {
         String fqn = ordProperties.getPrefixFqn();
-        String url = ordaApiUrl + "databases/name/" + fqn;
+        String url = ordaApiUrl + "/databases/name/" + fqn;
         return ordaClient.checkEntityExists(url, "База данных");
     }
 

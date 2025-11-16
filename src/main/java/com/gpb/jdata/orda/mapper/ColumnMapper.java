@@ -10,10 +10,16 @@ import com.gpb.jdata.orda.enums.TypesWithDataLength;
 public class ColumnMapper {
 
     private static ColumnDTO toDTO(Map<String, Object> map) {
-        String processedDataType = TypeMapper.mapToOrdaType(map.get("dtype").toString());
+        String dtype = map.get("dtype") != null ? map.get("dtype").toString() : null;
+        String dtlength = map.get("dtlength") != null ? map.get("dtlength").toString() : null;
+        String columnname = map.get("columnname") != null ? map.get("columnname").toString() : null;
+        String description = map.get("description") != null ? map.get("description").toString() : null;
+        String attnum = map.get("attnum") != null ? map.get("attnum").toString() : null;
+
+        String processedDataType = TypeMapper.mapToOrdaType(dtype);
         String processedDataLength = TypesWithDataLength.getProcessedDataLength(
                 processedDataType,
-                map.get("dtlength").toString()
+                dtlength
         );
         
         Integer dataLength = 0;
@@ -26,18 +32,16 @@ public class ColumnMapper {
         if (notnull instanceof Boolean && (Boolean) notnull) {
             constraint = "NULLABLE";
         }
-
-        String dataType = map.get("dtype").toString();
         
         return ColumnDTO.builder()
-                .name(map.get("columnname").toString())
-                .dataType(dataType)
-                .arrayDataType(resolveArrayType(dataType, processedDataType))
-                .dataTypeDisplay(dataTypeDisplay(dataType, dataLength))
+                .name(columnname)
+                .dataType(processedDataType)
+                .arrayDataType(resolveArrayType(dtype, processedDataType))
+                .dataTypeDisplay(dataTypeDisplay(processedDataType, dataLength))
                 .dataLength(processedDataLength)
-                .description(map.get("description").toString())
+                .description(description)
                 .constraint(constraint)
-                .ordinalPosition(map.get("attnum").toString())
+                .ordinalPosition(attnum)
                 .build();
     }
 
