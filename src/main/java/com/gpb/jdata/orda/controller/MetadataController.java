@@ -39,4 +39,12 @@ public class MetadataController {
         metadataService.syncMetadata();
         return ResponseEntity.ok().build();
     }
+
+    @PostMapping("/init")
+    @Operation(summary = "Инициализация всех сущностей")
+    public ResponseEntity<Void> initMetadata(HttpServletRequest httpServletRequest) {
+        logger.logApiCall(httpServletRequest, "InitMetadata");
+        metadataService.initialMetadata();
+        return ResponseEntity.ok().build();
+    }
 }

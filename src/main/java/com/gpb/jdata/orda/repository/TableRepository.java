@@ -79,6 +79,18 @@ public class TableRepository {
         }
     }
 
+    public List<Long> findAll() {
+        String sql = """
+            SELECT cl."oid"
+            FROM jdata.pg_class_rep cl
+        """;
+        try {
+            return jdbcTemplate.queryForList(sql, Long.class);
+        } catch (EmptyResultDataAccessException e) {
+            return null; // или throw new EntityNotFoundException("Schema not found with oid: " + oid);
+        }
+    } 
+
     public List<Map<String, Object>> getTableInfoById(int tableId) {
         String sql = """
             select nsp.nspname || '.' || cl.relname as tablename, att.attname , att.attnum

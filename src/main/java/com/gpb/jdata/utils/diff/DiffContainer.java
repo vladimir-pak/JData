@@ -1,5 +1,6 @@
 package com.gpb.jdata.utils.diff;
 
+import java.util.Collection;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -11,6 +12,10 @@ public class DiffContainer {
 
     public void addUpdated(Long oid) {
         updated.add(oid);
+    }
+
+    public void addAllUpdated(Collection<Long> oids) {
+        updated.addAll(oids);
     }
 
     public void addDeleted(String fqn) {

@@ -1,6 +1,13 @@
 package com.gpb.jdata.orda.service;
 
+import java.util.List;
+
 import org.springframework.stereotype.Service;
+
+import com.gpb.jdata.orda.repository.SchemaRepository;
+import com.gpb.jdata.orda.repository.TableRepository;
+import com.gpb.jdata.utils.diff.ClassDiffContainer;
+import com.gpb.jdata.utils.diff.NamespaceDiffContainer;
 
 import lombok.RequiredArgsConstructor;
 
@@ -10,8 +17,30 @@ public class MetadataService {
     private final SchemaService schemaService;
     private final TableService tableService;
     private final DatabaseService databaseService;
+    private final ClassDiffContainer classDiffContainer;
+    private final NamespaceDiffContainer namespaceDiffContainer;
+
+    private final SchemaRepository schemaRepository;
+    private final TableRepository tableRepository;
     
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(MetadataService.class);
+
+    public void initialMetadata() {
+        try {
+            classDiffContainer.clear();
+            namespaceDiffContainer.clear();
+
+            List<Long> schemas = schemaRepository.findAll();
+            namespaceDiffContainer.addAllUpdated(schemas);
+
+            List<Long> tables = tableRepository.findAll();
+            classDiffContainer.addAllUpdated(tables);
+
+            syncMetadata();
+        } catch (Exception e) {
+            logger.error("Ошибка при инициализации метаданных: {}", e.getMessage(), e);
+        }
+    }
 
     public void syncMetadata() {
         try {

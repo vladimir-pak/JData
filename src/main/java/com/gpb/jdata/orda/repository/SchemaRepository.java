@@ -1,5 +1,7 @@
 package com.gpb.jdata.orda.repository;
 
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,6 +34,18 @@ public class SchemaRepository {
             return null; // или throw new EntityNotFoundException("Schema not found with oid: " + oid);
         }
     }
+
+    public List<Long> findAll() {
+        String sql = """
+            SELECT sch."oid"
+            FROM jdata.pg_namespace_rep sch
+        """;
+        try {
+            return jdbcTemplate.queryForList(sql, Long.class);
+        } catch (EmptyResultDataAccessException e) {
+            return null; // или throw new EntityNotFoundException("Schema not found with oid: " + oid);
+        }
+    } 
 
     public String getSchemaNameById(int schemaId) {
         String sql = "SELECT nspname FROM jdata.pg_namespace_rep WHERE oid = ?";
