@@ -11,10 +11,5 @@ import org.springframework.context.annotation.Configuration;
 public class SysProperties {
     private String name;
     private String version;
-    private int dpt;
     private String dntdom;
-    private String user;
-    private String ip;
-    private String host;
-    private String port;
 }

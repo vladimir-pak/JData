@@ -30,7 +30,7 @@ public class ColumnMapper {
         String constraint = null;
         Object notnull = map.get("notnull");
         if (notnull instanceof Boolean && (Boolean) notnull) {
-            constraint = "NULLABLE";
+            constraint = "NOT_NULL";
         }
         
         return ColumnDTO.builder()

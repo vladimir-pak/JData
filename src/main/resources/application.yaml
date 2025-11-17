@@ -3,13 +3,8 @@
 spring:
   application:
     name: jdata
-    version: 0.0.1-SNAPSHOT
-    dpt: 912044
+    version: ${APP_VERSION:0.0.1}
     dntdom: GPB
-    user: test_user
-    ip: test_ip
-    host: test_dns
-    port: test_port
 
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/jdata_db}

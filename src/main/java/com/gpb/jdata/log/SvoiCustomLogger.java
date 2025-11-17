@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -26,16 +27,20 @@ public class SvoiCustomLogger {
     private final SysProperties sysProperties;
     private final LogsDatabaseProperties logsDatabaseProperties;
     private final LogRepository logRepository;
+    private final static String username = System.getProperty("user.name");
+    private int dpt = 0;
     private final SvoiJournalFactory svoiJournalFactory = new SvoiJournalFactory();
     private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss");
 
     @Autowired
     public SvoiCustomLogger(SysProperties sysProperties,
                             LogsDatabaseProperties logsDatabaseProperties,
-                            LogRepository logRepository) {
+                            LogRepository logRepository,
+                            ServletWebServerApplicationContext webServerAppContext) {
         this.sysProperties = sysProperties;
         this.logsDatabaseProperties = logsDatabaseProperties;
         this.logRepository = logRepository;
+        this.dpt = webServerAppContext.getWebServer().getPort();
     }
 
     public void logApiCall(HttpServletRequest request, String message) {
@@ -69,7 +74,7 @@ public class SvoiCustomLogger {
 
         journal.setDeviceProduct(sysProperties.getName());
         journal.setDeviceVersion(sysProperties.getVersion());
-        journal.setDpt(sysProperties.getDpt());
+        journal.setDpt(dpt);
         journal.setDntdom(sysProperties.getDntdom());
         journal.setDeviceEventClassID(deviceEventClassID);
         journal.setName(name);
@@ -77,8 +82,8 @@ public class SvoiCustomLogger {
         journal.setDhost(localHostName);
         journal.setDvchost(localHostName);
         journal.setDst(localHostAddress);
-        journal.setDuser(sysProperties.getUser());
-        journal.setSuser(sysProperties.getUser());
+        journal.setDuser(username);
+        journal.setSuser(username);
         journal.setApp("");
         journal.setDmac(getMacAddress());
         journal.setSeverity(severity);
@@ -118,7 +123,7 @@ public class SvoiCustomLogger {
         SvoiJournal svoiJournal = svoiJournalFactory.getJournalSource();
         svoiJournal.setDeviceProduct(sysProperties.getName());
         svoiJournal.setDeviceVersion(sysProperties.getVersion());
-        svoiJournal.setDpt(sysProperties.getDpt());
+        svoiJournal.setDpt(dpt);
         svoiJournal.setDntdom(sysProperties.getDntdom());
         svoiJournal.setDeviceEventClassID(deviceEventClassID);
         svoiJournal.setName(name);
@@ -126,8 +131,8 @@ public class SvoiCustomLogger {
         svoiJournal.setDhost(localHostName);
         svoiJournal.setDvchost(localHostName);
         svoiJournal.setDst(localHostAddress);
-        svoiJournal.setDuser(sysProperties.getUser());
-        svoiJournal.setSuser(sysProperties.getUser());
+        svoiJournal.setDuser(username);
+        svoiJournal.setSuser(username);
         svoiJournal.setApp("");
         svoiJournal.setDmac(getMacAddress());
         svoiJournal.setSeverity(severity);

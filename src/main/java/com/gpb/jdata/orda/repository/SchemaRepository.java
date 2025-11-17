@@ -45,7 +45,7 @@ public class SchemaRepository {
         } catch (EmptyResultDataAccessException e) {
             return null; // или throw new EntityNotFoundException("Schema not found with oid: " + oid);
         }
-    } 
+    }
 
     public String getSchemaNameById(int schemaId) {
         String sql = "SELECT nspname FROM jdata.pg_namespace_rep WHERE oid = ?";

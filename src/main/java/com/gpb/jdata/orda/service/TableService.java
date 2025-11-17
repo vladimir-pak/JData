@@ -13,7 +13,6 @@ import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 
@@ -34,6 +33,9 @@ import lombok.extern.slf4j.Slf4j;
 public class TableService {
     @Value("${ord.api.baseUrl}")
     private String ordaApiUrl;
+
+    @Value("${ord.api.max-connections:5}")
+    private int maxConnections;
 
     private static final String TABLE_URL = "/tables";
     
@@ -74,7 +76,7 @@ public class TableService {
     //     }
     // }
     public void syncTables() {
-        int poolSize = 5;
+        int poolSize = maxConnections;
         ExecutorService executor = Executors.newFixedThreadPool(poolSize);
 
         try {

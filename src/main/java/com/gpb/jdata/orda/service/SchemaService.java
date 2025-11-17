@@ -32,6 +32,9 @@ public class SchemaService {
     @Value("${ord.api.baseUrl}")
     private String ordaApiUrl;
 
+    @Value("${ord.api.max-connections:5}")
+    private int maxConnections;
+
     private static final String SCHEMA_URL = "/databaseSchemas";
     
     private final SchemaRepository schemaRepository;
@@ -70,7 +73,7 @@ public class SchemaService {
 
     public void syncSchema() {
         String url = ordaApiUrl + SCHEMA_URL;
-        int poolSize = 5;
+        int poolSize = maxConnections;
         ExecutorService executor = Executors.newFixedThreadPool(poolSize);
 
         try {
@@ -82,7 +85,7 @@ public class SchemaService {
                             log.warn("Схема не найдена для oid={}", oid);
                             return null;
                         }
-                        body.setDatabase(String.format("%s.%s", ordProperties.getPrefixFqn(), body.getName()));
+                        body.setDatabase(ordProperties.getPrefixFqn());
                         ordaClient.sendPutRequest(url, body, "Создание или обновление схемы");
                         return null;
                     })
