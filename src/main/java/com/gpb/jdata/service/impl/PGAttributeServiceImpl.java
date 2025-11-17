@@ -5,10 +5,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -23,7 +21,6 @@ import org.springframework.stereotype.Service;
 import com.gpb.jdata.config.DatabaseConfig;
 import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.log.SvoiSeverityEnum;
-import com.gpb.jdata.models.master.PGAttribute;
 import com.gpb.jdata.models.master.PGAttributeId;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGAttributeReplication;
@@ -184,30 +181,6 @@ public class PGAttributeServiceImpl implements PGAttributeService {
     public CompletableFuture<Void> synchronizeAsync() throws SQLException {
         synchronize();
         return CompletableFuture.completedFuture(null);
-    }
-
-    /**
-     * Чтение данных из таблицы pg_attribute
-     */
-    @Override
-    public List<PGAttribute> readMasterData(Connection connection) throws SQLException {
-        List<PGAttribute> masterData = new ArrayList<>();
-
-        try (Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery("SELECT * FROM pg_catalog.pg_attribute")) {
-            while (resultSet.next()) {
-                masterData.add(new PGAttribute(
-                        resultSet.getLong("attrelid"),
-                        resultSet.getLong("attnum"),
-                        resultSet.getString("attname"),
-                        resultSet.getBoolean("atthasdef"),
-                        resultSet.getBoolean("attnotnull"),
-                        resultSet.getLong("atttypid"),
-                        resultSet.getInt("atttypmod")
-                ));
-            }
-        }
-        return masterData;
     }
 
     /**

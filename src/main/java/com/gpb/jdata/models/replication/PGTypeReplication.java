@@ -38,26 +38,23 @@ public class PGTypeReplication implements Serializable {
 	@Column(name = "typnamespace")
 	private Long typnamespace;
 
-	@Column(name = "db")
-	private String db;
-
     @Override
 	public boolean equals(Object o) {
 		if (this == o) return true;
 		if (o == null || getClass() != o.getClass()) return false;
 		PGTypeReplication that = (PGTypeReplication) o;
-		return Objects.equals(oid, that.oid) && Objects.equals(typname, that.typname) && Objects.equals(typnamespace, that.typnamespace) && Objects.equals(db, that.db);
+		return Objects.equals(oid, that.oid) && Objects.equals(typname, that.typname) && Objects.equals(typnamespace, that.typnamespace);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(oid, typname, typnamespace, db);
+		return Objects.hash(oid, typname, typnamespace);
 	}
 
     @Override
     public String toString() {
         return String.format(
-            "PGTypeReplication{oid=%s, typname='%s', typnamespace=%s, db='%s'}", 
-            oid, typname, typnamespace, db);
+            "PGTypeReplication{oid=%s, typname='%s', typnamespace=%s}", 
+            oid, typname, typnamespace);
     }
 }

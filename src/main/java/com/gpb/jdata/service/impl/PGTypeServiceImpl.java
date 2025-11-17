@@ -1,15 +1,13 @@
 package com.gpb.jdata.service.impl;
 
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
@@ -23,13 +21,13 @@ import org.springframework.stereotype.Service;
 import com.gpb.jdata.config.DatabaseConfig;
 import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.log.SvoiSeverityEnum;
-import com.gpb.jdata.models.master.PGType;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGTypeReplication;
 import com.gpb.jdata.models.replication.Statistics;
 import com.gpb.jdata.repository.ActionRepository;
 import com.gpb.jdata.repository.PGTypeRepository;
 import com.gpb.jdata.service.PGTypeService;
+import com.gpb.jdata.utils.PostgresCopyStreamer;
 
 import lombok.RequiredArgsConstructor;
 
@@ -44,7 +42,26 @@ public class PGTypeServiceImpl implements PGTypeService {
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
 
+    private final PostgresCopyStreamer postgresCopyStreamer;
+
     private long lastTransactionCount = 0;
+
+    private final static String masterQuery = """
+                    SELECT oid, typname, typnamespace
+                    FROM pg_catalog.pg_type
+                    """;
+    private final static String initialCopySql = """
+                    COPY jdata.pg_type_rep (
+                        oid, typname, typnamespace
+                    )
+                    FROM STDIN WITH (FORMAT text)
+                    """;
+    private final static String copySql = """
+                    COPY jdata.pg_type_rep_tmp (
+                        oid, typname, typnamespace
+                    )
+                    FROM STDIN WITH (FORMAT text)
+                    """;
 
     /**
      * Создание начального снапшота и запись данных в таблицу репликации
@@ -56,15 +73,22 @@ public class PGTypeServiceImpl implements PGTypeService {
 			"Start PGType init", 
 			"Started PGType init", 
 			SvoiSeverityEnum.ONE);
+
         try (Connection connection = databaseConfig.getConnection()) {
-            List<PGType> data = readMasterData(connection);
-            logger.info("[pg_type] Initial snapshot created...");
-            replicate(data, connection);
-            writeStatistics((long) data.size(), "pg_type", connection);
-            logAction("INITIAL_SNAPSHOT", "pg_type", data.size() 
-                    + " records added", "");
-        } catch (SQLException e) {
-            logger.error("[pg_type] Error during initialization", e);
+            logger.info("[pg_type] Starting initial snapshot (streaming COPY)...");
+            
+            long inserted = postgresCopyStreamer.streamCopy(
+                    masterQuery, this::serializeRowFromResultSet, initialCopySql);
+
+            writeStatistics(inserted, "pg_type_rep", connection);
+            logAction("INITIAL_SNAPSHOT", "pg_type", 
+                    inserted + " records added", "");
+
+            logger.info("[pg_type] Initial snapshot finished. Inserted: {}", inserted);
+        } catch (SQLException | IOException e) {
+            logger.error("[pg_type] Error during initial snapshot", e);
+            throw (e instanceof SQLException) ? (SQLException) e : 
+                    new SQLException("Initial snapshot failed", e);
         }
     }
 
@@ -79,7 +103,7 @@ public class PGTypeServiceImpl implements PGTypeService {
      * Периодическая синхронизация данных
      */
     @Override
-    public void synchronize() {
+    public void synchronize() throws SQLException {
         svoiLogger.send(
 			"startSync", 
 			"Start PGType sync", 
@@ -87,115 +111,70 @@ public class PGTypeServiceImpl implements PGTypeService {
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
             long currentTransactionCount = getTransactionCountMain(connection);
+
             if (currentTransactionCount == lastTransactionCount) {
                 logger.info("[pg_type] {} No changes detected. Skipping synchronization.", 
                         currentTransactionCount);
                 return;
             }
+
             long diff = currentTransactionCount - lastTransactionCount;
             logger.info("[pg_type] {} Changes detected. Starting synchronization...", diff);
-            List<PGType> newData = readMasterData(connection);
-            compareSnapshots(newData, connection);
+            pgTypeRepository.truncateTempTable();
+            postgresCopyStreamer.streamCopy(
+                    masterQuery, this::serializeRowFromResultSet, copySql);
+
+            compareSnapshots();
             lastTransactionCount = currentTransactionCount;
             writeStatistics(currentTransactionCount, "pg_type", connection);
-        } catch (SQLException e) {
+        } catch (SQLException | IOException e) {
             logger.error("[pg_type] Error during synchronization", e);
+            throw (e instanceof SQLException) ? (SQLException) e : 
+                    new SQLException("Synchronization failed", e);
         }
     }
 
     @Override
     @Async
-    public CompletableFuture<Void> synchronizeAsync() {
+    public CompletableFuture<Void> synchronizeAsync() throws SQLException {
         synchronize();
         return CompletableFuture.completedFuture(null);
-    }
-    
-    /**
-     * Чтение данных из таблицы pg_type
-     */
-    @Override
-    public List<PGType> readMasterData(Connection connection) throws SQLException {
-        List<PGType> masterData = new ArrayList<>();
-        try (Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery("SELECT oid, * FROM pg_catalog.pg_type")) {
-            while (resultSet.next()) {
-                PGType replication = new PGType();
-                replication.setOid(resultSet.getLong("oid"));
-                replication.setTypnamespace(resultSet.getLong("typnamespace"));
-                replication.setTypname(resultSet.getString("typname"));
-                masterData.add(replication);
-            }
-        }
-        return masterData;
-    }
-
-    /**
-     * Репликация данных в таблицу репликации
-     */
-    private void replicate(List<PGType> data, Connection connection) throws SQLException {
-        List<PGTypeReplication> replicationData = data.stream()
-                .map(d -> convertToReplication(d, "adb"))
-                .collect(Collectors.toList());
-
-        if (replicationData != null && !replicationData.isEmpty()) {
-            pgTypeRepository.saveAll(replicationData);
-            logger.info("[pg_type_rep] Data replicated successfully.");
-            writeStatistics((long) replicationData.size(), "pg_type_rep", connection);
-        } else {
-            logger.info("[pg_type_rep] Data is empty.");
-        }
     }
 
     /**
      * Сравнение снапшотов
      */
-    private void compareSnapshots(List<PGType> newData, Connection connection) throws SQLException {
-        List<PGTypeReplication> replicationData = pgTypeRepository.findAll();
-        Map<Long, PGTypeReplication> replicationMap = replicationData.stream()
-                .collect(Collectors.toMap(PGTypeReplication::getOid, r -> r));
-
-        List<PGType> toAdd = new ArrayList<>();
-        List<PGType> toUpdate = new ArrayList<>();
-        List<Long> toDelete = new ArrayList<>(replicationMap.keySet());
-
-        for (PGType masterRecord : newData) {
-            Long oid = masterRecord.getOid();
-            PGTypeReplication replicationRecord = replicationMap.get(oid);
-            if (replicationRecord == null) {
-                toAdd.add(masterRecord);
-            } else {
-                if (!convertToReplication(masterRecord, "adb").equals(replicationRecord)) {
-                    toUpdate.add(masterRecord);
-                }
-                toDelete.remove(oid);
-            }
-        }
+    private void compareSnapshots() throws SQLException {
+        List<PGTypeReplication> toAdd = pgTypeRepository.findNew();
+        List<PGTypeReplication> toUpdate = pgTypeRepository.findUpdated();
+        List<PGTypeReplication> toDelete = pgTypeRepository.findDeleted();
+        List<Long> idsToDelete = toDelete.stream()
+                .map(r -> r.getOid())
+                .collect(Collectors.toList());
 
         if (!toDelete.isEmpty()) {
             logger.info("[pg_type_rep] Deleting {} records from the replica table", toDelete.size());
-            pgTypeRepository.deleteAllById(toDelete);
-            logAction("DELETE", "pg_type_rep", toDelete.size() + " records deleted", "");
+            pgTypeRepository.deleteAllById(idsToDelete);
+            logAction("DELETE", "pg_type_rep", toDelete.size() 
+                    + " records deleted", "");
         }
 
         if (!toAdd.isEmpty()) {
             logger.info("[pg_type_rep] Adding {} records to the replica table", toAdd.size());
-            replicate(toAdd, connection);
-            logAction("INSERT", "pg_type_rep", toAdd.size() + " records inserted", "");
+            pgTypeRepository.saveAll(toAdd);
         }
 
         if (!toUpdate.isEmpty()) {
             logger.info("[pg_type_rep] Updating {} records in the replica table", toUpdate.size());
-            toUpdate.forEach(e ->
-                    logAction("UPDATE", "pg_type_rep", " old: " +
-                                    pgTypeRepository.findPGTypeReplicationByOid(e.getOid())
-                            , " new:" + e.toString())
-            );
-            replicate(toUpdate, connection);
-            logAction("UPDATE", "pg_type_rep", toUpdate.size() + " records updated", "");
+            pgTypeRepository.saveAll(toUpdate);
+            logAction("UPDATE", "pg_type_rep", toUpdate.size() 
+                    + " records updated", "");
         }
 
         long totalOperations = toAdd.size() + toUpdate.size() + toDelete.size();
-        writeStatistics(totalOperations, "pg_type_rep", connection);
+        try (Connection connection = databaseConfig.getConnection()) {
+            writeStatistics(totalOperations, "pg_type_rep", connection);
+        }
     }
 
     /**
@@ -217,16 +196,32 @@ public class PGTypeServiceImpl implements PGTypeService {
         throw new SQLException("Failed to retrieve transaction count");
     }
 
-    /**
-     * Конвертация объекта
-     */
-    private PGTypeReplication convertToReplication(PGType pgType, String db) {
-        PGTypeReplication replication = new PGTypeReplication();
-        replication.setOid(pgType.getOid());
-        replication.setTypnamespace(pgType.getTypnamespace());
-        replication.setTypname(pgType.getTypname());
-        replication.setDb(db);
-        return replication;
+    private String serializeRowFromResultSet(ResultSet rs) {
+        try {
+            Long oid = rs.getLong("oid");
+            String typname = rs.getString("typname");
+            Long typnamespace = rs.getLong("typnamespace");
+
+            StringBuilder sb = new StringBuilder(128);
+            sb.append(escape(oid)).append('\t');
+            sb.append(escape(typname)).append('\t');
+            sb.append(escape(typnamespace)).append('\n');
+
+            return sb.toString();
+        } catch (SQLException e) {
+            logger.error("Error serializing ResultSet row", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    private String escape(Object v) {
+        if (v == null) return "\\N";
+        String s = String.valueOf(v);
+        // Простейшее экранирование для COPY text
+        return s.replace("\\", "\\\\")
+                .replace("\t", "\\t")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
     }
 
     /**
