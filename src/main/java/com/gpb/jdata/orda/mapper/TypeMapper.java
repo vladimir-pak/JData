@@ -163,7 +163,12 @@ public class TypeMapper {
     );
 
     public static String mapToOrdaType(String sourceType) {
-        return _SOURCE_TYPE_TO_OM_TYPE.getOrDefault(sourceType.toUpperCase(), "UNKNOWN");
+        if (sourceType != null) {
+            return _SOURCE_TYPE_TO_OM_TYPE.getOrDefault(sourceType.toUpperCase(), "UNKNOWN");
+        } else {
+            return "UNKNOWN";
+        }
+        
     }
 
     public static Map<String, String> getAllTypeMappings() {

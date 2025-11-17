@@ -15,7 +15,7 @@ public class ColumnMapper {
         String columnname = map.get("columnname") != null ? map.get("columnname").toString() : null;
         String description = map.get("description") != null ? map.get("description").toString() : null;
         String attnum = map.get("attnum") != null ? map.get("attnum").toString() : null;
-
+        
         String processedDataType = TypeMapper.mapToOrdaType(dtype);
         String processedDataLength = TypesWithDataLength.getProcessedDataLength(
                 processedDataType,

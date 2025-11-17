@@ -3,19 +3,22 @@ package com.gpb.jdata.log;
 
 import com.gpb.jdata.logrepository.Log;
 import com.gpb.jdata.logrepository.LogRepository;
+import com.gpb.jdata.orda.properties.OrdProperties;
 import com.gpb.jdata.properties.LogsDatabaseProperties;
 import com.gpb.jdata.properties.SysProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.net.InetAddress;
+import java.net.MalformedURLException;
 import java.net.NetworkInterface;
 import java.net.SocketException;
+import java.net.URL;
 import java.net.UnknownHostException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -28,7 +31,15 @@ public class SvoiCustomLogger {
     private final LogsDatabaseProperties logsDatabaseProperties;
     private final LogRepository logRepository;
     private final static String username = System.getProperty("user.name");
-    private int dpt = 0;
+
+    private final String ordHostname;
+    private final String ordIp;
+    private final int ordPort;
+    private final String ordUser;
+
+    @Value("${server.port}")
+    private Integer dpt;
+
     private final SvoiJournalFactory svoiJournalFactory = new SvoiJournalFactory();
     private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss");
 
@@ -36,11 +47,54 @@ public class SvoiCustomLogger {
     public SvoiCustomLogger(SysProperties sysProperties,
                             LogsDatabaseProperties logsDatabaseProperties,
                             LogRepository logRepository,
-                            ServletWebServerApplicationContext webServerAppContext) {
+                            OrdProperties ordProperties) {
         this.sysProperties = sysProperties;
         this.logsDatabaseProperties = logsDatabaseProperties;
         this.logRepository = logRepository;
-        this.dpt = webServerAppContext.getWebServer().getPort();
+
+        try {
+            String baseUrl = ordProperties.getBaseUrl();
+            if (baseUrl == null || baseUrl.trim().isEmpty()) {
+                throw new IllegalArgumentException("Base URL cannot be null or empty");
+            }
+            
+            URL parsedUrl = new URL(baseUrl);
+            String host = parsedUrl.getHost();
+            
+            if (host == null || host.trim().isEmpty()) {
+                throw new IllegalArgumentException("Invalid URL: host is missing");
+            }
+            
+            int port = parsedUrl.getPort();
+            
+            // Определяем порт по умолчанию на основе протокола
+            if (port == -1) {
+                String protocol = parsedUrl.getProtocol();
+                port = "https".equalsIgnoreCase(protocol) ? 443 : 80;
+            }
+            
+            // Резолвим hostname в IP
+            InetAddress inetAddress = InetAddress.getByName(host);
+            
+            this.ordPort = port;
+            this.ordIp = inetAddress.getHostAddress();
+            this.ordHostname = host;
+            this.ordUser = ordProperties.getUsername();
+            
+            log.info("ORD service configured - Host: {}, IP: {}, Port: {}", 
+                    ordHostname, ordIp, ordPort);
+            
+        } catch (MalformedURLException e) {
+            String errorMsg = String.format("Invalid URL format in OrdProperties: %s", 
+                                        ordProperties.getBaseUrl());
+            log.error(errorMsg, e);
+            throw new IllegalArgumentException(errorMsg, e);
+        } catch (UnknownHostException e) {
+            throw new RuntimeException(e);
+        } catch (Exception e) {
+            log.error("Unexpected error during ORD log configuration", e);
+            throw new RuntimeException("Failed to initialize ORD configuration", e);
+        }
     }
 
     public void logApiCall(HttpServletRequest request, String message) {
@@ -53,6 +107,28 @@ public class SvoiCustomLogger {
             journal.setShost(clientHost);
             journal.setSrc(clientIp);
             journal.setSpt(clientPort);
+
+            send("metadataSyncCall", "API Request", message, SvoiSeverityEnum.ONE, journal);
+
+        } catch (Exception e) {
+            log.error("Ошибка при логировании вызова API", e);
+        }
+    }
+
+    public void logOrdaCall(HttpServletRequest request, String message) {
+        try {
+            String clientIp = request.getRemoteAddr();
+            String clientHost = request.getRemoteHost();
+            int clientPort = request.getRemotePort();
+
+            SvoiJournal journal = svoiJournalFactory.getJournalSource();
+            journal.setShost(clientHost);
+            journal.setSrc(clientIp);
+            journal.setSpt(clientPort);
+            journal.setDpt(ordPort);
+            journal.setDhost(ordHostname);
+            journal.setDst(ordIp);
+            journal.setDuser(ordUser);
 
             send("metadataSyncCall", "API Request", message, SvoiSeverityEnum.ONE, journal);
 
@@ -74,6 +150,9 @@ public class SvoiCustomLogger {
 
         journal.setDeviceProduct(sysProperties.getName());
         journal.setDeviceVersion(sysProperties.getVersion());
+        journal.setSpt(dpt);
+        journal.setSrc(localHostAddress);
+        journal.setShost(localHostName);
         journal.setDpt(dpt);
         journal.setDntdom(sysProperties.getDntdom());
         journal.setDeviceEventClassID(deviceEventClassID);
@@ -84,7 +163,7 @@ public class SvoiCustomLogger {
         journal.setDst(localHostAddress);
         journal.setDuser(username);
         journal.setSuser(username);
-        journal.setApp("");
+        journal.setApp("https");
         journal.setDmac(getMacAddress());
         journal.setSeverity(severity);
 
@@ -133,7 +212,7 @@ public class SvoiCustomLogger {
         svoiJournal.setDst(localHostAddress);
         svoiJournal.setDuser(username);
         svoiJournal.setSuser(username);
-        svoiJournal.setApp("");
+        svoiJournal.setApp("https");
         svoiJournal.setDmac(getMacAddress());
         svoiJournal.setSeverity(severity);
         try (

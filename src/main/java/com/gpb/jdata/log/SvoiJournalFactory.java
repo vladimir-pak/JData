@@ -24,7 +24,7 @@ public class SvoiJournalFactory {
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss");
     private String deviceProduct;
     private String deviceVersion;
-    @Value("$server.port")
+    @Value("${server.port}")
     private Integer localPort;
     private String localHostName;
     private Long journalLineNumber = 0L;
