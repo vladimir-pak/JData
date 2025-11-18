@@ -81,6 +81,7 @@ public class OrdaClient {
             restTemplate.exchange(url, HttpMethod.PUT, request, Void.class);
         } catch (Exception e) {
             System.err.println("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
