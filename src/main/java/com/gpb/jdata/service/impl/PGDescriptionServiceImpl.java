@@ -65,6 +65,7 @@ public class PGDescriptionServiceImpl implements PGDescriptionService {
 			"Started PGDescription init", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             List<PGDescription> data = readMasterData(connection);
             logger.info("[pg_description] Initial snapshot created...");
 
@@ -73,6 +74,7 @@ public class PGDescriptionServiceImpl implements PGDescriptionService {
             logAction("INITIAL_SNAPSHOT", "pg_description", data.size() + " records added", "");
         } catch (SQLException e) {
             logger.error("[pg_description] Error during initialization", e);
+            svoiLogger.logDbConnectionError(e);
         }
     }
 
@@ -94,6 +96,7 @@ public class PGDescriptionServiceImpl implements PGDescriptionService {
 			"Started PGDescription sync", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCountMain(connection);
 
             if (currentTransactionCount == lastTransactionCount && lastTransactionCount != 0) {
@@ -111,6 +114,7 @@ public class PGDescriptionServiceImpl implements PGDescriptionService {
             writeStatistics(currentTransactionCount, "pg_description", connection);
         } catch (SQLException e) {
             logger.error("[pg_description] Error during synchronization", e);
+            svoiLogger.logDbConnectionError(e);
         }
     }
 

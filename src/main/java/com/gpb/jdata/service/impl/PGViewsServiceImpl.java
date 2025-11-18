@@ -62,6 +62,7 @@ public class PGViewsServiceImpl implements PGViewsService {
 			"Started PGViews init", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             List<PGViews> data = readMasterData(connection);
             logger.info("[pg_views] Initial snapshot created...");
             replicate(data, connection);
@@ -70,6 +71,7 @@ public class PGViewsServiceImpl implements PGViewsService {
                     + " records added", "");
         } catch (SQLException e) {
             logger.error("[pg_views] Error during initialization", e);
+            svoiLogger.logDbConnectionError(e);
         }
     }
 
@@ -91,21 +93,12 @@ public class PGViewsServiceImpl implements PGViewsService {
 			"Started PGViews sync", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
-        //    long currentTransactionCount = getTransactionCountMain(connection);
-
-        //    if (currentTransactionCount == lastTransactionCount) {
-        //        logger.info("[pg_views] {} No changes detected. Skipping synchronization.", currentTransactionCount);
-        //        return;
-        //    }
-        //    long diff = currentTransactionCount - lastTransactionCount;
-        //    logger.info("[pg_views] {} Changes detected. Starting synchronization...", diff);
+            svoiLogger.logConnectToSource();
             List<PGViews> newData = readMasterData(connection);
             compareSnapshots(newData, connection);
-        //    lastTransactionCount = currentTransactionCount;
-
-        //    writeStatistics(currentTransactionCount, "pg_views", connection);
         } catch (SQLException e) {
             logger.error("[pg_views] Error during synchronization", e);
+            svoiLogger.logDbConnectionError(e);
         }
     }
 

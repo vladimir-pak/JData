@@ -76,7 +76,7 @@ public class PGClassServiceImpl implements PGClassService {
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
             logger.info("[pg_class] Starting initial snapshot (streaming COPY)...");
-            
+            svoiLogger.logConnectToSource();
             long inserted = postgresCopyStreamer.streamCopy(
                     masterQuery, this::serializeRowFromResultSet, initialCopySql);
 
@@ -87,6 +87,7 @@ public class PGClassServiceImpl implements PGClassService {
             logger.info("[pg_class] Initial snapshot finished. Inserted: {}", inserted);
         } catch (SQLException | IOException e) {
             logger.error("[pg_class] Error during initial snapshot", e);
+            svoiLogger.logDbConnectionError(e);
             throw (e instanceof SQLException) ? (SQLException) e : 
                     new SQLException("Initial snapshot failed", e);
         }
@@ -103,6 +104,7 @@ public class PGClassServiceImpl implements PGClassService {
 			"Started PGClass sync", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCount(connection);
 
             if (currentTransactionCount == lastTransactionCount) {
@@ -123,6 +125,7 @@ public class PGClassServiceImpl implements PGClassService {
             writeStatistics(currentTransactionCount, "pg_class", connection);
         } catch (SQLException | IOException e) {
             logger.error("[pg_class] Error during synchronization", e);
+            svoiLogger.logDbConnectionError(e);
             throw (e instanceof SQLException) ? (SQLException) e : 
                     new SQLException("Synchronization failed", e);
         }

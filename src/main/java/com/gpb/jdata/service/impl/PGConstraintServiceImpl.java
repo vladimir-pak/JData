@@ -61,6 +61,7 @@ public class PGConstraintServiceImpl implements PGConstraintService {
 			"Started PGConstraint init", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             List<PGConstraint> data = readMasterData(connection);
             logger.info("[pg_constraint] Initial snapshot created...");
 
@@ -69,6 +70,7 @@ public class PGConstraintServiceImpl implements PGConstraintService {
             logAction("INITIAL_SNAPSHOT", "pg_constraint", data.size() + " records added", "");
         } catch (SQLException e) {
             logger.error("[pg_constraint] Error during initialization", e);
+            svoiLogger.logDbConnectionError(e);
         }
     }
 
@@ -90,6 +92,7 @@ public class PGConstraintServiceImpl implements PGConstraintService {
 			"Started PGConstraint sync", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCountMain(connection);
 
             if (currentTransactionCount == lastTransactionCount) {
@@ -107,6 +110,7 @@ public class PGConstraintServiceImpl implements PGConstraintService {
             writeStatistics(currentTransactionCount, "pg_constraint", connection);
         } catch (SQLException e) {
             logger.error("[pg_constraint] Error during synchronization", e);
+            svoiLogger.logDbConnectionError(e);
         }
     }
 

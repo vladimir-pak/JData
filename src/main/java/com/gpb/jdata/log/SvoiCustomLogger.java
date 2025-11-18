@@ -1,6 +1,7 @@
 package com.gpb.jdata.log;
 
 
+import com.gpb.jdata.config.DatabaseConfig;
 import com.gpb.jdata.logrepository.Log;
 import com.gpb.jdata.logrepository.LogRepository;
 import com.gpb.jdata.orda.properties.OrdProperties;
@@ -40,8 +41,13 @@ public class SvoiCustomLogger {
     private final String localHostName;
     private final String localHostAddress;
 
+    private final String gpHostname;
+    private final String gpIp;
+    private final int gpPort;
+    private final String gpUser;
+
     @Value("${server.port}")
-    private Integer dpt;
+    private Integer localPort;
 
     private final SvoiJournalFactory svoiJournalFactory = new SvoiJournalFactory();
     private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss");
@@ -50,7 +56,8 @@ public class SvoiCustomLogger {
     public SvoiCustomLogger(SysProperties sysProperties,
                             LogsDatabaseProperties logsDatabaseProperties,
                             LogRepository logRepository,
-                            OrdProperties ordProperties) {
+                            OrdProperties ordProperties,
+                            DatabaseConfig databaseConfig) {
         this.sysProperties = sysProperties;
         this.logsDatabaseProperties = logsDatabaseProperties;
         this.logRepository = logRepository;
@@ -98,6 +105,25 @@ public class SvoiCustomLogger {
             }
             this.localHostName = localHostName;
             this.localHostAddress = localHostAddress;
+
+            String gpUrl = databaseConfig.getUrl();
+
+            String hostPort = gpUrl.replace("jdbc:postgresql://", "").split("/")[0];
+            String[] parts = hostPort.split(":");
+            String src = parts[0];
+            String dst;
+            String dhost;
+            if (isIp(src)) {
+                dst = src;
+                dhost = resolveHost(src);
+            } else {
+                dst = resolveHost(src);
+                dhost = src;
+            }
+            this.gpHostname = dhost;
+            this.gpIp = dst;
+            this.gpPort = parts.length > 1 ? Integer.parseInt(parts[1]) : 5432;
+            this.gpUser = databaseConfig.getUsername();
             
         } catch (MalformedURLException e) {
             String errorMsg = String.format("Invalid URL format in OrdProperties: %s", 
@@ -109,6 +135,85 @@ public class SvoiCustomLogger {
         } catch (Exception e) {
             log.error("Unexpected error during ORD log configuration", e);
             throw new RuntimeException("Failed to initialize ORD configuration", e);
+        }
+    }
+
+    public void logConnectToSource() {
+        try {
+            SvoiJournal journal = svoiJournalFactory.getJournalSource();
+            journal.setSrc(localHostAddress);
+            journal.setShost(localHostName);
+            journal.setSpt(localPort);
+            journal.setSuser(username);
+            journal.setDhost(gpHostname);
+            journal.setDst(gpIp);
+            journal.setDvchost(gpHostname);
+            journal.setDpt(gpPort);
+            journal.setDuser(gpUser);
+
+            String message = String.format("connectToGreenPlum dns=%s ip=%s port=%d",
+                    gpHostname, gpIp, gpPort);
+
+            send("connectToSource", "Database Connection", message,
+                    SvoiSeverityEnum.ONE, journal);
+
+        } catch (Exception e) {
+            log.error("Ошибка при логировании подключения к источнику Greenplum", e);
+        }
+    }
+
+    /** Ошибка подключения или авторизации к базе источника */
+    public void logDbConnectionError(Exception e) {
+        try {
+            SvoiJournal journal = svoiJournalFactory.getJournalSource();
+            journal.setSrc(localHostAddress);
+            journal.setShost(localHostName);
+            journal.setSpt(localPort);
+            journal.setSuser(username);
+            journal.setDhost(gpHostname);
+            journal.setDst(gpIp);
+            journal.setDvchost(gpHostname);
+            journal.setDpt(gpPort);
+            journal.setDuser(gpUser);
+
+            String message = String.format(
+                    "dbConnectionError connectToGreenPlum user=%s dns=%s ip=%s port=%d error=%s",
+                    username,
+                    gpHostname,
+                    gpIp,
+                    gpPort,
+                    (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
+            );
+
+            send("dbConnectionError",
+                    "DB Connection Error",
+                    message,
+                    SvoiSeverityEnum.FIVE,
+                    journal);
+
+        } catch (Exception ex) {
+            log.error("Ошибка при логировании dbConnectionError", ex);
+        }
+    }
+
+    public void logBadCredentials(String ip, String username, String endpoint) {
+        try {
+            SvoiJournal journal = svoiJournalFactory.getJournalSource();
+            journal.setSrc(ip);
+            journal.setShost(ip);
+
+            String message = String.format(
+                    "authFailed invalidCredentials user=%s endpoint=%s ip=%s",
+                    username != null ? username : "unknown",
+                    endpoint,
+                    ip
+            );
+
+            send("authFailed", "Invalid Login or Password", message,
+                    SvoiSeverityEnum.FIVE, journal);
+
+        } catch (Exception ex) {
+            log.error("Ошибка при логировании неверных учётных данных", ex);
         }
     }
 
@@ -135,7 +240,7 @@ public class SvoiCustomLogger {
             SvoiJournal journal = svoiJournalFactory.getJournalSource();
             journal.setShost(localHostName);
             journal.setSrc(localHostAddress);
-            journal.setSpt(dpt);
+            journal.setSpt(localPort);
             journal.setDpt(ordPort);
             journal.setDhost(ordHostname);
             journal.setDvchost(ordHostname);
@@ -153,7 +258,7 @@ public class SvoiCustomLogger {
         journal.setDeviceProduct(sysProperties.getName());
         journal.setDeviceVersion(sysProperties.getVersion());
         if (journal.getDpt() == null) {
-            journal.setDpt(dpt);
+            journal.setDpt(localPort);
         }
         journal.setDntdom(sysProperties.getDntdom());
         journal.setDeviceEventClassID(deviceEventClassID);
@@ -209,10 +314,10 @@ public class SvoiCustomLogger {
         SvoiJournal svoiJournal = svoiJournalFactory.getJournalSource();
         svoiJournal.setDeviceProduct(sysProperties.getName());
         svoiJournal.setDeviceVersion(sysProperties.getVersion());
-        svoiJournal.setSpt(dpt);
+        svoiJournal.setSpt(localPort);
         svoiJournal.setSrc(localHostAddress);
         svoiJournal.setShost(localHostName);
-        svoiJournal.setDpt(dpt);
+        svoiJournal.setDpt(localPort);
         svoiJournal.setDntdom(sysProperties.getDntdom());
         svoiJournal.setDeviceEventClassID(deviceEventClassID);
         svoiJournal.setName(name);
@@ -258,5 +363,18 @@ public class SvoiCustomLogger {
             log.error(e.getMessage(), e);
         }
         return String.join(":", addresses);
+    }
+
+    private boolean isIp(String input) {
+        if (input == null) return false;
+        return input.contains(".") || input.contains(":");
+    }
+
+    private String resolveHost(String input) {
+        try {
+            return InetAddress.getByName(input).getHostName();
+        } catch (Exception e) {
+            return "UnableToResolve:" + input;
+        }
     }
 }

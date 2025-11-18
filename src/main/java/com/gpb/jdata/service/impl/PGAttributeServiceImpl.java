@@ -89,6 +89,8 @@ public class PGAttributeServiceImpl implements PGAttributeService {
         try (Connection connection = databaseConfig.getConnection()) {
             logger.info("[pg_attribute] Starting initial snapshot (streaming COPY)...");
             
+            svoiLogger.logConnectToSource();
+
             long inserted = postgresCopyStreamer.streamCopy(
                     masterQuery, this::serializeRowFromResultSet, initialCopySql);
 
@@ -99,6 +101,7 @@ public class PGAttributeServiceImpl implements PGAttributeService {
             logger.info("[pg_attribute] Initial snapshot finished. Inserted: {}", inserted);
         } catch (SQLException | IOException e) {
             logger.error("[pg_attribute] Error during initial snapshot", e);
+            svoiLogger.logDbConnectionError(e);
             throw (e instanceof SQLException) ? (SQLException) e : 
                     new SQLException("Initial snapshot failed", e);
         }
@@ -111,37 +114,6 @@ public class PGAttributeServiceImpl implements PGAttributeService {
         return CompletableFuture.completedFuture(null);
     }
 
-    /**
-     * Периодическая синхронизация данных
-     */
-    // @Override
-    // public void synchronize() {
-    //     svoiLogger.send(
-	// 		"startSync", 
-	// 		"Start PGAttribute sync", 
-	// 		"Started PGAttribute sync", 
-	// 		SvoiSeverityEnum.ONE);
-    //     try (Connection connection = databaseConfig.getConnection()) {
-    //         long currentTransactionCount = getTransactionCountMain(connection);
-
-    //         if (currentTransactionCount == lastTransactionCount) {
-    //             logger.info("[pg_attribute] {} No changes detected. Skipping synchronization.", 
-    //                     currentTransactionCount);
-    //             return;
-    //         }
-
-    //         long diff = currentTransactionCount - lastTransactionCount;
-    //         logger.info("[pg_attribute] {} Changes detected. Starting synchronization...", diff);
-
-    //         List<PGAttribute> newData = readMasterData(connection);
-    //         compareSnapshots(newData, connection);
-    //         lastTransactionCount = currentTransactionCount;
-    //         writeStatistics(currentTransactionCount, "pg_attribute", connection);
-    //     } catch (SQLException e) {
-    //         logger.error("[pg_attribute] Error during synchronization", e);
-    //     }
-    // }
-
     @Override
     public void synchronize() throws SQLException {
         svoiLogger.send(
@@ -150,6 +122,7 @@ public class PGAttributeServiceImpl implements PGAttributeService {
 			"Started PGAttribute sync", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCountMain(connection);
 
             if (currentTransactionCount == lastTransactionCount) {
@@ -164,13 +137,12 @@ public class PGAttributeServiceImpl implements PGAttributeService {
             postgresCopyStreamer.streamCopy(
                     masterQuery, this::serializeRowFromResultSet, copySql);
 
-            // List<PGAttribute> newData = readMasterData(connection);
-
             compareSnapshots();
             lastTransactionCount = currentTransactionCount;
             writeStatistics(currentTransactionCount, "pg_attribute", connection);
         } catch (SQLException | IOException e) {
             logger.error("[pg_attribute] Error during synchronization", e);
+            svoiLogger.logDbConnectionError(e);
             throw (e instanceof SQLException) ? (SQLException) e : 
                     new SQLException("Synchronization failed", e);
         }

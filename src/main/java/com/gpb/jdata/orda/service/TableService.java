@@ -3,11 +3,8 @@ package com.gpb.jdata.orda.service;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -64,7 +61,7 @@ public class TableService {
                     return null;
                 })
                 .toList();
-            executor.invokeAll(tasks, 1, TimeUnit.MINUTES);
+            executor.invokeAll(tasks, 30, TimeUnit.MINUTES);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("Ошибка при синхронизации таблицы: {}", e.getMessage());

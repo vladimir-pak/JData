@@ -64,6 +64,7 @@ public class PGPartitionServiceImpl implements PGPartitionService {
 			"Started PGPartition init", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             List<PGPartition> data = readMasterData(connection);
             logger.info("[pg_partition] Initial snapshot created...");
             replicate(data, connection);
@@ -72,6 +73,7 @@ public class PGPartitionServiceImpl implements PGPartitionService {
                     + " records added", "");
         } catch (SQLException e) {
             logger.error("[pg_partition] Error during initialization", e);
+            svoiLogger.logDbConnectionError(e);
         }
     }
 
@@ -94,6 +96,7 @@ public class PGPartitionServiceImpl implements PGPartitionService {
 			"Started PGPartition sync", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCount(connection);
             if (currentTransactionCount == lastTransactionCount) {
                 logger.info("[pg_partition] No changes detected. Skipping synchronization.");
@@ -107,6 +110,7 @@ public class PGPartitionServiceImpl implements PGPartitionService {
             writeStatistics(currentTransactionCount, "pg_partition_rep", connection);
         } catch (SQLException e) {
             logger.error("[pg_partition] Error during synchronization", e);
+            svoiLogger.logDbConnectionError(e);
         }
     }
 
