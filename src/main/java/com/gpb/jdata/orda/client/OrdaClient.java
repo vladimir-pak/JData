@@ -50,7 +50,9 @@ public class OrdaClient {
 
     public boolean checkEntityExists(String url, String entityName) {
         try {
-            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            HttpHeaders headers = createHeaders();
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, entity, Map.class);
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 System.out.println(entityName + " существует: " + url);
                 return true;
@@ -66,11 +68,7 @@ public class OrdaClient {
             HttpHeaders headers = createHeaders();
             HttpEntity<T> request = new HttpEntity<>(body, headers);
             restTemplate.postForObject(url, request, Void.class);
-            svoiLogger.send(
-                "postOrda", 
-                "POST request", 
-                String.format("%s: %s", actionDescription, url), 
-                SvoiSeverityEnum.ONE);
+            svoiLogger.logOrdaCall(actionDescription);
             System.out.println(actionDescription + " выполнено успешно: " + url);
         } catch (Exception e) {
             System.err.println("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
@@ -82,11 +80,7 @@ public class OrdaClient {
             HttpHeaders headers = createHeaders();
             HttpEntity<T> request = new HttpEntity<>(body, headers);
             restTemplate.exchange(url, HttpMethod.PUT, request, Void.class);
-            svoiLogger.send(
-                "putOrda", 
-                "PUT request",
-                String.format("%s: %s", actionDescription, url), 
-                SvoiSeverityEnum.ONE);
+            svoiLogger.logOrdaCall(actionDescription);
             System.out.println(actionDescription + " выполнено успешно: " + url);
         } catch (Exception e) {
             System.err.println("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
@@ -101,11 +95,7 @@ public class OrdaClient {
             HttpHeaders headers = createHeaders();
             HttpEntity<Void> request = new HttpEntity<>(headers);
             restTemplate.exchange(uri, HttpMethod.DELETE, request, Void.class);
-            svoiLogger.send(
-                "deleteOrda", 
-                "DELETE request",
-                String.format("%s: %s", actionDescription, url), 
-                SvoiSeverityEnum.ONE);
+            svoiLogger.logOrdaCall(actionDescription);
             System.out.println(actionDescription + " выполнено успешно: " + url);
         } catch (HttpClientErrorException e) {
             System.err.println("HTTP ошибка " + e.getStatusCode() 

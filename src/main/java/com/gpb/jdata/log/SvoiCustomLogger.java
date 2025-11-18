@@ -37,6 +37,9 @@ public class SvoiCustomLogger {
     private final int ordPort;
     private final String ordUser;
 
+    private final String localHostName;
+    private final String localHostAddress;
+
     @Value("${server.port}")
     private Integer dpt;
 
@@ -83,6 +86,18 @@ public class SvoiCustomLogger {
             
             log.info("ORD service configured - Host: {}, IP: {}, Port: {}", 
                     ordHostname, ordIp, ordPort);
+
+            String localHostName;
+            String localHostAddress;
+            try {
+                localHostName = InetAddress.getLocalHost().getHostName();
+                localHostAddress = InetAddress.getLocalHost().getHostAddress();
+            } catch (UnknownHostException e) {
+                localHostName = InetAddress.getLoopbackAddress().getHostName();
+                localHostAddress = InetAddress.getLoopbackAddress().getHostAddress();
+            }
+            this.localHostName = localHostName;
+            this.localHostAddress = localHostAddress;
             
         } catch (MalformedURLException e) {
             String errorMsg = String.format("Invalid URL format in OrdProperties: %s", 
@@ -108,29 +123,26 @@ public class SvoiCustomLogger {
             journal.setSrc(clientIp);
             journal.setSpt(clientPort);
 
-            send("metadataSyncCall", "API Request", message, SvoiSeverityEnum.ONE, journal);
+            send("apiCall", "API Request", message, SvoiSeverityEnum.ONE, journal);
 
         } catch (Exception e) {
             log.error("Ошибка при логировании вызова API", e);
         }
     }
 
-    public void logOrdaCall(HttpServletRequest request, String message) {
+    public void logOrdaCall(String message) {
         try {
-            String clientIp = request.getRemoteAddr();
-            String clientHost = request.getRemoteHost();
-            int clientPort = request.getRemotePort();
-
             SvoiJournal journal = svoiJournalFactory.getJournalSource();
-            journal.setShost(clientHost);
-            journal.setSrc(clientIp);
-            journal.setSpt(clientPort);
+            journal.setShost(localHostName);
+            journal.setSrc(localHostAddress);
+            journal.setSpt(dpt);
             journal.setDpt(ordPort);
             journal.setDhost(ordHostname);
+            journal.setDvchost(ordHostname);
             journal.setDst(ordIp);
             journal.setDuser(ordUser);
 
-            send("metadataSyncCall", "API Request", message, SvoiSeverityEnum.ONE, journal);
+            send("apiOrd", "API Request", message, SvoiSeverityEnum.ONE, journal);
 
         } catch (Exception e) {
             log.error("Ошибка при логировании вызова API", e);
@@ -138,30 +150,27 @@ public class SvoiCustomLogger {
     }
 
     public void send(String deviceEventClassID, String name, String message, SvoiSeverityEnum severity, SvoiJournal journal) {
-        String localHostName;
-        String localHostAddress;
-        try {
-            localHostName = InetAddress.getLocalHost().getHostName();
-            localHostAddress = InetAddress.getLocalHost().getHostAddress();
-        } catch (UnknownHostException e) {
-            localHostName = InetAddress.getLoopbackAddress().getHostName();
-            localHostAddress = InetAddress.getLoopbackAddress().getHostAddress();
-        }
-
         journal.setDeviceProduct(sysProperties.getName());
         journal.setDeviceVersion(sysProperties.getVersion());
-        journal.setSpt(dpt);
-        journal.setSrc(localHostAddress);
-        journal.setShost(localHostName);
-        journal.setDpt(dpt);
+        if (journal.getDpt() == null) {
+            journal.setDpt(dpt);
+        }
         journal.setDntdom(sysProperties.getDntdom());
         journal.setDeviceEventClassID(deviceEventClassID);
         journal.setName(name);
         journal.setMessage(message);
-        journal.setDhost(localHostName);
-        journal.setDvchost(localHostName);
-        journal.setDst(localHostAddress);
-        journal.setDuser(username);
+        if (journal.getDhost() == null) {
+            journal.setDhost(localHostName);
+        }
+        if (journal.getDvchost() == null) {
+            journal.setDvchost(localHostName);
+        }
+        if (journal.getDst() == null) {
+            journal.setDst(localHostAddress);
+        }
+        if (journal.getDuser() == null) {
+            journal.setDuser(username);
+        }
         journal.setSuser(username);
         journal.setApp("https");
         journal.setDmac(getMacAddress());
@@ -185,8 +194,6 @@ public class SvoiCustomLogger {
         } catch (Exception e) {
             log.error(e.getMessage(), e);
         }
-
-
     }
 
     public void send(String deviceEventClassID, String name, String message, SvoiSeverityEnum severity) {
@@ -202,6 +209,9 @@ public class SvoiCustomLogger {
         SvoiJournal svoiJournal = svoiJournalFactory.getJournalSource();
         svoiJournal.setDeviceProduct(sysProperties.getName());
         svoiJournal.setDeviceVersion(sysProperties.getVersion());
+        svoiJournal.setSpt(dpt);
+        svoiJournal.setSrc(localHostAddress);
+        svoiJournal.setShost(localHostName);
         svoiJournal.setDpt(dpt);
         svoiJournal.setDntdom(sysProperties.getDntdom());
         svoiJournal.setDeviceEventClassID(deviceEventClassID);
