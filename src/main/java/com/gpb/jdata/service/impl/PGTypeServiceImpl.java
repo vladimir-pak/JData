@@ -76,7 +76,7 @@ public class PGTypeServiceImpl implements PGTypeService {
 
         try (Connection connection = databaseConfig.getConnection()) {
             logger.info("[pg_type] Starting initial snapshot (streaming COPY)...");
-            
+            svoiLogger.logConnectToSource();
             long inserted = postgresCopyStreamer.streamCopy(
                     masterQuery, this::serializeRowFromResultSet, initialCopySql);
 
@@ -87,6 +87,7 @@ public class PGTypeServiceImpl implements PGTypeService {
             logger.info("[pg_type] Initial snapshot finished. Inserted: {}", inserted);
         } catch (SQLException | IOException e) {
             logger.error("[pg_type] Error during initial snapshot", e);
+            svoiLogger.logDbConnectionError(e);
             throw (e instanceof SQLException) ? (SQLException) e : 
                     new SQLException("Initial snapshot failed", e);
         }
@@ -110,6 +111,7 @@ public class PGTypeServiceImpl implements PGTypeService {
 			"Started PGType sync", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCountMain(connection);
 
             if (currentTransactionCount == lastTransactionCount) {
@@ -129,6 +131,7 @@ public class PGTypeServiceImpl implements PGTypeService {
             writeStatistics(currentTransactionCount, "pg_type", connection);
         } catch (SQLException | IOException e) {
             logger.error("[pg_type] Error during synchronization", e);
+            svoiLogger.logDbConnectionError(e);
             throw (e instanceof SQLException) ? (SQLException) e : 
                     new SQLException("Synchronization failed", e);
         }

@@ -54,12 +54,14 @@ public class PGDatabaseServiceImpl implements PGDatabaseService {
 			"Started PGDatabase init", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             List<PGDatabase> data = readMasterData(connection);
             replicate(data, connection);
             writeStatistics((long) data.size(), "pg_database", connection);
             logAction("INITIAL_SNAPSHOT", "pg_database", data.size() + " records added", "");
         } catch (SQLException e) {
             logger.error("[pg_database] Error during initialization", e);
+            svoiLogger.logDbConnectionError(e);
         }
     }
 
@@ -78,6 +80,7 @@ public class PGDatabaseServiceImpl implements PGDatabaseService {
 			"Started PGDatabase sync", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCount(connection);
             List<PGDatabase> newData = readMasterData(connection);
             compareSnapshots(newData, connection);
@@ -85,6 +88,7 @@ public class PGDatabaseServiceImpl implements PGDatabaseService {
             writeStatistics(currentTransactionCount, "pg_database", connection);
         } catch (SQLException e) {
             logger.error("[pg_database] Error during synchronization", e);
+            svoiLogger.logDbConnectionError(e);
         }
     }
 

@@ -34,7 +34,7 @@ public class PartitionRepository {
                      end as partition_strategy,
                      unnest(paratts) column_index
                  from
-                     pg_partition_rep) pt
+                     jdata.pg_partition_rep) pt
             join
                 jdata.pg_class_rep par
               on par.oid = pt.parrelid

@@ -16,7 +16,6 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.gpb.jdata.log.SvoiCustomLogger;
-import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.orda.service.KeycloakAuthService;
 
 import lombok.RequiredArgsConstructor;
@@ -67,9 +66,8 @@ public class OrdaClient {
         try {
             HttpHeaders headers = createHeaders();
             HttpEntity<T> request = new HttpEntity<>(body, headers);
-            restTemplate.postForObject(url, request, Void.class);
             svoiLogger.logOrdaCall(actionDescription);
-            System.out.println(actionDescription + " выполнено успешно: " + url);
+            restTemplate.postForObject(url, request, Void.class);
         } catch (Exception e) {
             System.err.println("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
             }
@@ -79,9 +77,8 @@ public class OrdaClient {
         try {
             HttpHeaders headers = createHeaders();
             HttpEntity<T> request = new HttpEntity<>(body, headers);
-            restTemplate.exchange(url, HttpMethod.PUT, request, Void.class);
             svoiLogger.logOrdaCall(actionDescription);
-            System.out.println(actionDescription + " выполнено успешно: " + url);
+            restTemplate.exchange(url, HttpMethod.PUT, request, Void.class);
         } catch (Exception e) {
             System.err.println("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
         }
@@ -94,9 +91,8 @@ public class OrdaClient {
             URI uri = builder.build().toUri();
             HttpHeaders headers = createHeaders();
             HttpEntity<Void> request = new HttpEntity<>(headers);
-            restTemplate.exchange(uri, HttpMethod.DELETE, request, Void.class);
             svoiLogger.logOrdaCall(actionDescription);
-            System.out.println(actionDescription + " выполнено успешно: " + url);
+            restTemplate.exchange(uri, HttpMethod.DELETE, request, Void.class);
         } catch (HttpClientErrorException e) {
             System.err.println("HTTP ошибка " + e.getStatusCode() 
                     + " при " + actionDescription + ": " + url);

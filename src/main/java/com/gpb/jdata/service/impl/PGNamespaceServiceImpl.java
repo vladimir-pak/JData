@@ -58,6 +58,7 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
 			"Started PGNamespace init", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             List<PGNamespace> data = readMasterData(connection);
             logger.info("[pg_namespace] Initial snapshot created...");
             replicate(data, connection);
@@ -67,6 +68,7 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
                     data.size() + " records added", "");
         } catch (SQLException e) {
             logger.error("[pg_namespace] Error during initialization", e);
+            svoiLogger.logDbConnectionError(e);
         }
     }
 
@@ -81,6 +83,7 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
 			"Started PGNamespace sync", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCountMain(connection);
             if (currentTransactionCount == lastTransactionCount) {
                 logger.info("[pg_namespace] {} No changes detected. Skipping synchronization.", 
@@ -95,6 +98,7 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
             writeStatistics(currentTransactionCount, "pg_namespace", connection);
         } catch (SQLException e) {
             logger.error("[pg_namespace] Error during synchronization", e);
+            svoiLogger.logDbConnectionError(e);
         }
     }
 

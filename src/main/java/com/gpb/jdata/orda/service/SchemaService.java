@@ -50,13 +50,13 @@ public class SchemaService {
             List<Callable<Void>> tasks = diffNamespace.getUpdated().stream()
             .<Callable<Void>>map(oid -> () -> {
                 SchemaDTO body = schemaRepository.getSchemaByOid(oid);
-                body.setDatabase(String.format("%s.%s", ordProperties.getPrefixFqn(), body.getName()));
+                body.setDatabase(ordProperties.getPrefixFqn());
                 ordaClient.sendPutRequest(url, body, "Создание или обновление схемы");
                 return null;
             })
             .toList();
         
-            executor.invokeAll(tasks, 1, TimeUnit.MINUTES);
+            executor.invokeAll(tasks, 10, TimeUnit.MINUTES);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("Ошибка при синхронизации схем: " + e.getMessage());
