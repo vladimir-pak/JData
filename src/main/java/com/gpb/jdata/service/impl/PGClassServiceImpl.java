@@ -1,15 +1,13 @@
 package com.gpb.jdata.service.impl;
 
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.hibernate.Session;
@@ -21,13 +19,13 @@ import org.springframework.stereotype.Service;
 import com.gpb.jdata.config.DatabaseConfig;
 import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.log.SvoiSeverityEnum;
-import com.gpb.jdata.models.master.PGClass;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGClassReplication;
 import com.gpb.jdata.models.replication.Statistics;
 import com.gpb.jdata.repository.ActionRepository;
 import com.gpb.jdata.repository.PGClassRepository;
 import com.gpb.jdata.service.PGClassService;
+import com.gpb.jdata.utils.PostgresCopyStreamer;
 import com.gpb.jdata.utils.diff.ClassDiffContainer;
 
 import lombok.RequiredArgsConstructor;
@@ -43,9 +41,28 @@ public class PGClassServiceImpl implements PGClassService {
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
 
+    private final PostgresCopyStreamer postgresCopyStreamer;
+
     private final ClassDiffContainer diffContainer;
 
     private long lastTransactionCount = 0;
+
+    private final static String masterQuery = """
+                    SELECT oid, relname, relnamespace, relkind
+                    FROM pg_catalog.pg_class
+                    """;
+    private final static String initialCopySql = """
+                    COPY jdata.pg_class_rep (
+                        oid, relname, relnamespace, relkind
+                    )
+                    FROM STDIN WITH (FORMAT text)
+                    """;
+    private final static String copySql = """
+                    COPY jdata.pg_class_rep_tmp (
+                        oid, relname, relnamespace, relkind
+                    )
+                    FROM STDIN WITH (FORMAT text)
+                    """;
 
     /**
      * Создание начального снапшота и запись данных в таблицу репликации
@@ -58,16 +75,20 @@ public class PGClassServiceImpl implements PGClassService {
 			"Started PGClass init", 
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
-            List<PGClass> data = readMasterData(connection);
-            logger.info("[pg_class] Initial snapshot created...");
+            logger.info("[pg_class] Starting initial snapshot (streaming COPY)...");
+            
+            long inserted = postgresCopyStreamer.streamCopy(
+                    masterQuery, this::serializeRowFromResultSet, initialCopySql);
 
-            filterData(data);
-            replicate(data, connection);
-            data.forEach(e -> diffContainer.addUpdated(e.getOid()));
-            writeStatistics((long) data.size(), "pg_class", connection);
-            logAction("INITIAL_SNAPSHOT", "pg_class", data.size() + " records added", "");
-        } catch (SQLException e) {
-            logger.error("[pg_class] Error during initialization", e);
+            writeStatistics(inserted, "pg_class_rep", connection);
+            logAction("INITIAL_SNAPSHOT", "pg_class", 
+                    inserted + " records added", "");
+
+            logger.info("[pg_class] Initial snapshot finished. Inserted: {}", inserted);
+        } catch (SQLException | IOException e) {
+            logger.error("[pg_class] Error during initial snapshot", e);
+            throw (e instanceof SQLException) ? (SQLException) e : 
+                    new SQLException("Initial snapshot failed", e);
         }
     }
 
@@ -75,7 +96,7 @@ public class PGClassServiceImpl implements PGClassService {
      * Периодическая синхронизация данных
      */
     @Override
-    public void synchronize() {
+    public void synchronize() throws SQLException {
         svoiLogger.send(
 			"startSync", 
 			"Start PGClass sync", 
@@ -85,146 +106,74 @@ public class PGClassServiceImpl implements PGClassService {
             long currentTransactionCount = getTransactionCount(connection);
 
             if (currentTransactionCount == lastTransactionCount) {
-                logger.info("[pg_class] {} No changes detected. Skipping synchronization.", currentTransactionCount);
+                logger.info("[pg_class] {} No changes detected. Skipping synchronization.", 
+                        currentTransactionCount);
                 return;
             }
 
             long diff = currentTransactionCount - lastTransactionCount;
             logger.info("[pg_class] {} Changes detected. Starting synchronization...", diff);
+            
+            pgClassRepository.truncateTempTable();
+            postgresCopyStreamer.streamCopy(
+                    masterQuery, this::serializeRowFromResultSet, copySql);
 
-            List<PGClass> newData = readMasterData(connection);
-            filterData(newData);
-            compareSnapshots(newData, connection);
+            compareSnapshots();
             lastTransactionCount = currentTransactionCount;
             writeStatistics(currentTransactionCount, "pg_class", connection);
-        } catch (SQLException e) {
+        } catch (SQLException | IOException e) {
             logger.error("[pg_class] Error during synchronization", e);
-        }
-    }
-
-    /**
-     * Чтение данных из таблицы pg_class
-     */
-    private List<PGClass> readMasterData(Connection connection) throws SQLException {
-        List<PGClass> data = new ArrayList<>();
-        try (Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery("SELECT oid, * FROM pg_catalog.pg_class")) {
-
-            while (resultSet.next()) {
-                data.add(new PGClass(
-                        resultSet.getLong("oid"),
-                        resultSet.getString("relname"),
-                        resultSet.getBigDecimal("relnamespace").toBigInteger(),
-                        resultSet.getString("relkind")
-                ));
-            }
-        }
-        return data;
-    }
-
-    /**
-     * Фильтрация данных
-     */
-    private void filterData(List<PGClass> data) {
-        data.removeIf(d -> d.getRelkind().equals("i")
-                || d.getRelkind().equals("c")
-                || d.getRelkind().equals("S"));
-        data.removeIf(d -> d.getRelname().contains("_pkey")
-                || d.getRelname().contains("_seq"));
-    }
-
-    /**
-     * Репликация данных в таблицу репликации
-     */
-    @Override
-    public void replicate(List<PGClass> data, Connection connection) throws SQLException {
-        List<PGClassReplication> replicationData = data.stream()
-                .map(d -> new PGClassReplication(
-                        d.getOid(),
-                        d.getRelname(),
-                        d.getRelnamespace(),
-                        d.getRelkind()))
-                .collect(Collectors.toList());
-
-        if (replicationData != null && !replicationData.isEmpty()) {
-            pgClassRepository.saveAll(replicationData);
-            logger.info("[pg_class_rep] Data replicated successfully.");
-            writeStatistics((long) replicationData.size(), "pg_class_rep", connection);
-        } else {
-            logger.info("[pg_class_rep] Data is empty.");
+            throw (e instanceof SQLException) ? (SQLException) e : 
+                    new SQLException("Synchronization failed", e);
         }
     }
 
     /**
      * Сравнение снапшотов
      */
-    private void compareSnapshots(List<PGClass> newData, Connection connection) throws SQLException {
-        List<PGClassReplication> replicationData = pgClassRepository.findAll();
-        Map<Long, PGClassReplication> replicationMap = replicationData.stream()
-                .collect(Collectors.toMap(PGClassReplication::getOid, r -> r));
-
-        List<PGClass> toAdd = new ArrayList<>();
-        List<PGClass> toUpdate = new ArrayList<>();
-        List<Long> toDelete = new ArrayList<>(replicationMap.keySet());
-
-        for (PGClass masterRecord : newData) {
-            Long oid = masterRecord.getOid();
-            PGClassReplication replicationRecord = replicationMap.get(oid);
-            if (replicationRecord == null) {
-                toAdd.add(masterRecord);
-            } else {
-                if (!convertToReplication(masterRecord).equals(replicationRecord)) {
-                    toUpdate.add(masterRecord);
-                }
-                toDelete.remove(oid);
-            }
-        }
+    private void compareSnapshots() throws SQLException {
+        List<PGClassReplication> toAdd = pgClassRepository.findNew();
+        List<PGClassReplication> toUpdate = pgClassRepository.findUpdated();
+        List<PGClassReplication> toDelete = pgClassRepository.findDeleted();
+        List<Long> idsToDelete = toDelete.stream()
+                .map(r -> r.getOid())
+                .collect(Collectors.toList());
 
         if (!toDelete.isEmpty()) {
-            logger.info("[pg_class_rep] Deleting {} records from the replica table", toDelete.size());
-            pgClassRepository.deleteAllById(toDelete);
+            logger.info("[pg_attribute_rep] Deleting {} records from the replica table", toDelete.size());
+            pgClassRepository.deleteAllById(idsToDelete);
             toDelete.forEach(e -> {
                     diffContainer.addDeleted(String.format("%s.%s",
-                            replicationMap.get(e).getRelnamespace(),
-                            replicationMap.get(e).getRelname()));
-                    diffContainer.addDeletedOids(e);
+                            e.getRelnamespace(),
+                            e.getRelname()));
+                    diffContainer.addDeletedOids(e.getOid());
             });
-            logAction("DELETE", "pg_class_rep", toDelete.size() + " records deleted", "");
+            logAction("DELETE", "pg_class_rep", toDelete.size() 
+                    + " records deleted", "");
         }
 
         if (!toAdd.isEmpty()) {
             logger.info("[pg_class_rep] Adding {} records to the replica table", toAdd.size());
-            replicate(toAdd, connection);
+            pgClassRepository.saveAll(toAdd);
             toAdd.forEach(e -> diffContainer.addUpdated(e.getOid()));
-            logAction("INSERT", "pg_class_rep", toAdd.size() + " records inserted", "");
+            logAction("INSERT", "pg_class_rep", toAdd.size() 
+                    + " records inserted", "");
         }
 
         if (!toUpdate.isEmpty()) {
             logger.info("[pg_class_rep] Updating {} records in the replica table", toUpdate.size());
             toUpdate.forEach(e -> {
-                    logAction("UPDATE", "pg_class_rep", " old: " +
-                                        pgClassRepository.findPGClassReplicationByOid(e.getOid())
-                                , " new:" + e.toString());
                     diffContainer.addUpdated(e.getOid());
             });
-            replicate(toUpdate, connection);
-            logAction("UPDATE", "pg_class_rep", toUpdate.size() + " records updated", "");
+            pgClassRepository.saveAll(toUpdate);
+            logAction("UPDATE", "pg_attribute_rep", toUpdate.size() 
+                    + " records updated", "");
         }
 
         long totalOperations = toAdd.size() + toUpdate.size() + toDelete.size();
-        writeStatistics(totalOperations, "pg_class_rep", connection);
-    }
-
-    /**
-     * Конвертация объекта
-     */
-    private PGClassReplication convertToReplication(PGClass pgClass) {
-        PGClassReplication replication = new PGClassReplication();
-        replication.setOid(pgClass.getOid());
-        replication.setRelname(pgClass.getRelname());
-        replication.setRelnamespace(pgClass.getRelnamespace());
-        replication.setRelkind(pgClass.getRelkind());
-        return replication;
+        try (Connection connection = databaseConfig.getConnection()) {
+            writeStatistics(totalOperations, "pg_class_rep", connection);
+        }
     }
 
     /**
@@ -243,6 +192,36 @@ public class PGClassServiceImpl implements PGClassService {
             }
         }
         throw new SQLException("Failed to retrieve transaction count");
+    }
+
+    private String serializeRowFromResultSet(ResultSet rs) {
+        try {
+            long oid = rs.getLong("oid");
+            String relname = rs.getString("relname");
+            Integer relnamespace = rs.getInt("relnamespace");
+            String relkind = rs.getString("relkind");
+
+            StringBuilder sb = new StringBuilder(128);
+            sb.append(escape(oid)).append('\t');
+            sb.append(escape(relname)).append('\t');
+            sb.append(escape(relnamespace)).append('\t');
+            sb.append(escape(relkind)).append('\n');
+
+            return sb.toString();
+        } catch (SQLException e) {
+            logger.error("Error serializing ResultSet row", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    private String escape(Object v) {
+        if (v == null) return "\\N";
+        String s = String.valueOf(v);
+        // Простейшее экранирование для COPY text
+        return s.replace("\\", "\\\\")
+                .replace("\t", "\\t")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
     }
 
     /**

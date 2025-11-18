@@ -1,7 +1,6 @@
 package com.gpb.jdata.models.replication;
 
 import java.io.Serializable;
-import java.math.BigInteger;
 import java.util.Objects;
 
 import jakarta.persistence.Column;
@@ -40,7 +39,7 @@ public class PGClassReplication implements Serializable {
 	 * OID пространства имён, содержащего это отношение (pg_namespace.oid)
 	 * **/
 	@Column(name = "relnamespace")
-	private BigInteger relnamespace;
+	private Integer relnamespace;
 
 	/**
 	 * r = обычная таблица, i = индекс (index), S = последовательность (sequence), 
