@@ -117,7 +117,7 @@ public class SvoiCustomLogger {
                 dst = src;
                 dhost = resolveHost(src);
             } else {
-                dst = resolveHost(src);
+                dst = resolveIp(src);
                 dhost = src;
             }
             this.gpHostname = dhost;
@@ -395,6 +395,14 @@ public class SvoiCustomLogger {
     private String resolveHost(String input) {
         try {
             return InetAddress.getByName(input).getHostName();
+        } catch (Exception e) {
+            return "UnableToResolve:" + input;
+        }
+    }
+
+    private String resolveIp(String input) {
+        try {
+            return InetAddress.getByName(input).getHostAddress();
         } catch (Exception e) {
             return "UnableToResolve:" + input;
         }
