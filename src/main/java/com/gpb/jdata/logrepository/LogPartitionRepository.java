@@ -20,7 +20,7 @@ public class LogPartitionRepository {
     private final JdbcTemplate logsJdbcTemplate;
     private final CleanDatabaseLogsProperties cleanDatabaseLogs;
     private final LogsDatabaseProperties logsDatabaseProperties;
-    public final SvoiCustomLogger svoiCustomLogger;
+    private final SvoiCustomLogger svoiCustomLogger;
 
     public LogPartitionRepository(
             @Qualifier("logsJdbcTemplate") JdbcTemplate logsJdbcTemplate,
