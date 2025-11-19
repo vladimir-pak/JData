@@ -8,6 +8,6 @@ import com.gpb.jdata.models.master.PGNamespace;
 
 public interface PGNamespaceService {
     void initialSnapshot() throws SQLException;
-    void synchronize();
+    void synchronize() throws SQLException;
     List<PGNamespace> readMasterData(Connection connection) throws SQLException;
 }

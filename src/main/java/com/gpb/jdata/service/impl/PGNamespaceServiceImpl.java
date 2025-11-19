@@ -76,7 +76,7 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
      * Периодическая синхронизация данных
      */
     @Override
-    public void synchronize() {
+    public void synchronize() throws SQLException {
         svoiLogger.send(
 			"startSync", 
 			"Start PGNamespace sync", 
@@ -99,6 +99,7 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
         } catch (SQLException e) {
             logger.error("[pg_namespace] Error during synchronization", e);
             svoiLogger.logDbConnectionError(e);
+            throw e;
         }
     }
 
