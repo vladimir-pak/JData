@@ -141,7 +141,9 @@ public class TableService {
         String fqn = String.format("%s.%s", ordProperties.getPrefixFqn(), tableName);
         try {
             String url = ordaApiUrl + TABLE_URL + "/name/" + fqn;
-            ordaClient.sendDeleteRequest(url, "Удаление таблицы");
+            if (!ordaClient.isProjectEntity(fqn)) {
+                ordaClient.sendDeleteRequest(url, "Удаление таблицы");
+            }
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
                 log.warn("Таблица не найдена: {}", fqn);

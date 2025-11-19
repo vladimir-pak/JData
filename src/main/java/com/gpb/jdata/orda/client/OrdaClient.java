@@ -66,21 +66,21 @@ public class OrdaClient {
         try {
             HttpHeaders headers = createHeaders();
             HttpEntity<T> request = new HttpEntity<>(body, headers);
-            svoiLogger.logOrdaCall(actionDescription);
             restTemplate.postForObject(url, request, Void.class);
+            svoiLogger.logOrdaCall(actionDescription);
         } catch (Exception e) {
-            System.err.println("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
-            }
+            svoiLogger.logOrdaCall("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
+        }
     }
 
     public <T> void sendPutRequest(String url, T body, String actionDescription) {
         try {
             HttpHeaders headers = createHeaders();
             HttpEntity<T> request = new HttpEntity<>(body, headers);
-            svoiLogger.logOrdaCall(actionDescription);
             restTemplate.exchange(url, HttpMethod.PUT, request, Void.class);
+            svoiLogger.logOrdaCall(actionDescription);
         } catch (Exception e) {
-            System.err.println("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
+            svoiLogger.logOrdaCall("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -92,14 +92,13 @@ public class OrdaClient {
             URI uri = builder.build().toUri();
             HttpHeaders headers = createHeaders();
             HttpEntity<Void> request = new HttpEntity<>(headers);
-            svoiLogger.logOrdaCall(actionDescription);
             restTemplate.exchange(uri, HttpMethod.DELETE, request, Void.class);
+            svoiLogger.logOrdaCall(actionDescription);
         } catch (HttpClientErrorException e) {
-            System.err.println("HTTP ошибка " + e.getStatusCode() 
-                    + " при " + actionDescription + ": " + url);
+            svoiLogger.logOrdaCall("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
             throw e;
         } catch (Exception e) {
-            System.err.println("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
+            svoiLogger.logOrdaCall("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
         }
     }
     
