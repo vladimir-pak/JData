@@ -151,7 +151,7 @@ public class SvoiCustomLogger {
             journal.setDpt(gpPort);
             journal.setDuser(gpUser);
 
-            String message = String.format("connectToGreenPlum dns=%s ip=%s port=%d",
+            String message = String.format("connectToGreenPlum dns: %s; ip: %s; port: %d;",
                     gpHostname, gpIp, gpPort);
 
             send("connectToSource", "Database Connection", message,
@@ -177,7 +177,7 @@ public class SvoiCustomLogger {
             journal.setDuser(gpUser);
 
             String message = String.format(
-                    "dbConnectionError connectToGreenPlum user=%s dns=%s ip=%s port=%d error=%s",
+                    "dbConnectionError connectToGreenPlum user: %s; dns: %s; ip: %s; port: %d; error: %s;",
                     username,
                     gpHostname,
                     gpIp,
@@ -204,7 +204,7 @@ public class SvoiCustomLogger {
             journal.setSuser(username);
 
             String message = String.format(
-                    "Authenticated user=%s ip=%s",
+                    "Authenticated user: %s; ip: %s;",
                     username != null ? username : "unknown",
                     ip
             );
@@ -225,7 +225,7 @@ public class SvoiCustomLogger {
             journal.setSuser(username);
 
             String message = String.format(
-                    "authFailed invalidCredentials user=%s endpoint=%s ip=%s",
+                    "authFailed invalidCredentials user: %s; endpoint: %s; ip: %s;",
                     username != null ? username : "unknown",
                     endpoint,
                     ip
