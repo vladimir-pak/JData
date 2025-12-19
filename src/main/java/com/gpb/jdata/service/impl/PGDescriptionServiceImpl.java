@@ -21,6 +21,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.config.PersistanceTransactions;
+import com.gpb.jdata.config.PersistanceTransactions.PgKey;
 import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.master.PGDescription;
@@ -51,7 +53,7 @@ public class PGDescriptionServiceImpl implements PGDescriptionService {
     private final ClassDiffContainer diffContainerClass;
     private final NamespaceDiffContainer diffContainerNamespace;
 
-    private long lastTransactionCount = 0;
+    private final PersistanceTransactions transactions;
 
     /**
      * Создание начального снапшота и запись данных в таблицу репликации
@@ -99,6 +101,7 @@ public class PGDescriptionServiceImpl implements PGDescriptionService {
             svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCountMain(connection);
 
+            long lastTransactionCount = transactions.get(PgKey.PG_DESCRIPTION);
             if (currentTransactionCount == lastTransactionCount && lastTransactionCount != 0) {
                 logger.info("[pg_description] {} No changes detected. Skipping synchronization.", 
                         currentTransactionCount);
@@ -110,7 +113,7 @@ public class PGDescriptionServiceImpl implements PGDescriptionService {
 
             List<PGDescription> newData = readMasterData(connection);
             compareSnapshots(newData, connection);
-            lastTransactionCount = currentTransactionCount;
+            transactions.put(PgKey.PG_DESCRIPTION, currentTransactionCount);
             writeStatistics(currentTransactionCount, "pg_description", connection);
         } catch (SQLException e) {
             logger.error("[pg_description] Error during synchronization", e);

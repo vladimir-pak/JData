@@ -23,6 +23,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.config.PersistanceTransactions;
+import com.gpb.jdata.config.PersistanceTransactions.PgKey;
 import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.master.PGPartition;
@@ -50,7 +52,7 @@ public class PGPartitionServiceImpl implements PGPartitionService {
 
     private final ClassDiffContainer diffContainer;
 
-    private long lastTransactionCount = 0;
+    private final PersistanceTransactions transactions;
    
     /**
      * Создание начального снапшота и запись данных в репликацию
@@ -98,6 +100,7 @@ public class PGPartitionServiceImpl implements PGPartitionService {
         try (Connection connection = databaseConfig.getConnection()) {
             svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCount(connection);
+            long lastTransactionCount = transactions.get(PgKey.PG_PARTITION);
             if (currentTransactionCount == lastTransactionCount) {
                 logger.info("[pg_partition] No changes detected. Skipping synchronization.");
                 return;
@@ -106,7 +109,7 @@ public class PGPartitionServiceImpl implements PGPartitionService {
             logger.info("[pg_partition] {} changes detected. Synchronizing...", diff);
             List<PGPartition> newData = readMasterData(connection);
             compareSnapshots(newData, connection);
-            lastTransactionCount = currentTransactionCount;
+            transactions.put(PgKey.PG_PARTITION, currentTransactionCount);
             writeStatistics(currentTransactionCount, "pg_partition_rep", connection);
         } catch (SQLException e) {
             logger.error("[pg_partition] Error during synchronization", e);

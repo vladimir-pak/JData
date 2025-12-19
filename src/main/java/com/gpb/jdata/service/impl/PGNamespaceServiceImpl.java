@@ -19,6 +19,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.config.PersistanceTransactions;
+import com.gpb.jdata.config.PersistanceTransactions.PgKey;
 import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.master.PGNamespace;
@@ -45,7 +47,7 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
 
     private final NamespaceDiffContainer diffContainer;
 
-    private long lastTransactionCount = 0;
+    private final PersistanceTransactions transactions;
 
     /**
      * Создание начального снапшота и запись данных в таблицу репликации
@@ -85,6 +87,7 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
         try (Connection connection = databaseConfig.getConnection()) {
             svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCountMain(connection);
+            long lastTransactionCount = transactions.get(PgKey.PG_NAMESPACE);
             if (currentTransactionCount == lastTransactionCount) {
                 logger.info("[pg_namespace] {} No changes detected. Skipping synchronization.", 
                         currentTransactionCount);
@@ -94,7 +97,7 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
             logger.info("[pg_namespace] {} Changes detected. Starting synchronization...", diff);
             List<PGNamespace> newData = readMasterData(connection);
             compareSnapshots(newData, connection);
-            lastTransactionCount = currentTransactionCount;
+            transactions.put(PgKey.PG_NAMESPACE, currentTransactionCount);
             writeStatistics(currentTransactionCount, "pg_namespace", connection);
         } catch (SQLException e) {
             logger.error("[pg_namespace] Error during synchronization", e);

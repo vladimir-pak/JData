@@ -61,7 +61,7 @@ public class TableService {
                     return null;
                 })
                 .toList();
-            executor.invokeAll(tasks, 30, TimeUnit.MINUTES);
+            executor.invokeAll(tasks, 60, TimeUnit.MINUTES);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("Ошибка при синхронизации таблицы: {}", e.getMessage());
@@ -69,50 +69,6 @@ public class TableService {
             executor.shutdown();
         }
     }
-
-    // public void syncTables() {
-    //     int poolSize = maxConnections;
-    //     ExecutorService executor = Executors.newFixedThreadPool(poolSize);
-
-    //     try {
-    //         // Формируем задачи
-    //         List<Callable<Void>> tasks = diffContainer.getUpdated().stream()
-    //                 .<Callable<Void>>map(oid -> () -> {
-    //                     List<Map<String, Object>> rows = tableRepository.getTableByOid(oid);
-    //                     if (rows != null && !rows.isEmpty()) {
-    //                         sendGrouped(rows);
-    //                     }
-    //                     return null;
-    //                 })
-    //                 .toList();
-
-    //         // invokeAll возвращает список Future
-    //         List<Future<Void>> futures = executor.invokeAll(tasks, 1, TimeUnit.MINUTES);
-
-    //         for (Future<Void> future : futures) {
-    //             try {
-    //                 future.get(); // выбросит ExecutionException если задача упала
-    //             } catch (ExecutionException e) {
-    //                 // Прерываем все остальные задачи
-    //                 for (Future<Void> f : futures) {
-    //                     f.cancel(true);
-    //                 }
-    //                 throw new RuntimeException(e.getCause());
-    //             } catch (CancellationException e) {
-    //                 log.warn("Задача была отменена из-за ошибки в другой задаче");
-    //             }
-    //         }
-
-    //     } catch (InterruptedException e) {
-    //         Thread.currentThread().interrupt();
-    //         log.error("Синхронизация прервана: {}", e.getMessage(), e);
-    //     } catch (Exception e) {
-    //         log.error("Ошибка при синхронизации таблицы: {}", e.getMessage(), e);
-    //         throw new RuntimeException(e);
-    //     } finally {
-    //         executor.shutdownNow();
-    //     }
-    // }
 
     private void sendGrouped(List<Map<String, Object>> rows) {
         Map<String, List<Map<String, Object>>> byTable = rows.stream().collect(
@@ -126,7 +82,7 @@ public class TableService {
             TableDTO body = TableMapper.toRequestBody(
                         tableRows, parts, tableRepository, ordProperties.getPrefixFqn());
             String url = ordaApiUrl + TABLE_URL;
-            ordaClient.sendPutRequest(url, body, "Создание или обновление таблицы");
+            ordaClient.sendPutRequest(url, body, "Создание или обновление таблицы " + table);
         }
     }
 
@@ -142,14 +98,14 @@ public class TableService {
         try {
             String url = ordaApiUrl + TABLE_URL + "/name/" + fqn;
             if (!ordaClient.isProjectEntity(fqn)) {
-                ordaClient.sendDeleteRequest(url, "Удаление таблицы");
+                ordaClient.sendDeleteRequest(url, "Удаление таблицы " + tableName);
             }
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
                 log.warn("Таблица не найдена: {}", fqn);
             }
         } catch (Exception e) {
-            log.error("Ошибка при удалении таблицы: {}", e.getMessage());
+            log.error("Ошибка при удалении таблицы {}: {}", tableName, e.getMessage());
         }
     }
 }

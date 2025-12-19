@@ -17,6 +17,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.config.PersistanceTransactions;
+import com.gpb.jdata.config.PersistanceTransactions.PgKey;
 import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.replication.Action;
@@ -45,7 +47,7 @@ public class PGClassServiceImpl implements PGClassService {
 
     private final ClassDiffContainer diffContainer;
 
-    private long lastTransactionCount = 0;
+    private final PersistanceTransactions transactions;
 
     private final static String masterQuery = """
                     SELECT oid, relname, relnamespace, relkind
@@ -107,6 +109,8 @@ public class PGClassServiceImpl implements PGClassService {
             svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCount(connection);
 
+            long lastTransactionCount = transactions.get(PgKey.PG_CLASS);
+
             if (currentTransactionCount == lastTransactionCount) {
                 logger.info("[pg_class] {} No changes detected. Skipping synchronization.", 
                         currentTransactionCount);
@@ -121,7 +125,7 @@ public class PGClassServiceImpl implements PGClassService {
                     masterQuery, this::serializeRowFromResultSet, copySql);
 
             compareSnapshots();
-            lastTransactionCount = currentTransactionCount;
+            transactions.put(PgKey.PG_CLASS, currentTransactionCount);
             writeStatistics(currentTransactionCount, "pg_class", connection);
         } catch (SQLException | IOException e) {
             logger.error("[pg_class] Error during synchronization", e);
