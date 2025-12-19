@@ -67,17 +67,17 @@ public class Init {
             // Последовательно
             pgNamespaceService.synchronize();
             pgClassService.synchronize();
+            pgAttributeService.synchronize();
 
             // Параллельно
             CompletableFuture<Void> f1 = pgViewsService.synchronizeAsync();
             CompletableFuture<Void> f2 = pgDescriptionService.synchronizeAsync();
             CompletableFuture<Void> f3 = pgConstraintService.synchronizeAsync();
             CompletableFuture<Void> f4 = pgTypeService.synchronizeAsync();
-            CompletableFuture<Void> f5 = pgAttributeService.synchronizeAsync();
-            CompletableFuture<Void> f6 = pgPartitionService.synchronizeAsync();
+            CompletableFuture<Void> f5 = pgPartitionService.synchronizeAsync();
 
             // Ждем завершения всех задач
-            CompletableFuture.allOf(f1, f2, f3, f4, f5, f6).join();
+            CompletableFuture.allOf(f1, f2, f3, f4, f5).join();
 
             metadataService.syncMetadata();
 
