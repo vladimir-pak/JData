@@ -36,7 +36,14 @@ public class OrdaClient {
     public boolean isProjectEntity(String fqn) {
         String url = ordaApiUrl + TABLE_URL + "/name/" + fqn;
         try {
-            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            HttpHeaders headers = createHeaders();
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            ResponseEntity<Map> response = restTemplate.exchange(
+                url, 
+                HttpMethod.GET, 
+                entity, 
+                Map.class
+            );
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 return Boolean.TRUE.equals(response.getBody().get("isProjectEntity"));
             }
