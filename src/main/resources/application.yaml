@@ -46,6 +46,7 @@ greenplum:
   username: ${GREENPLUM_USERNAME:user}
   password: ${GREENPLUM_PASSWORD:password}
   type: PostgreSQL
+  persistance-storage: config/pg-transactions.json
   
 ord:
   api:

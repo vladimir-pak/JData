@@ -19,6 +19,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.config.PersistanceTransactions;
+import com.gpb.jdata.config.PersistanceTransactions.PgKey;
 import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.replication.Action;
@@ -44,7 +46,7 @@ public class PGTypeServiceImpl implements PGTypeService {
 
     private final PostgresCopyStreamer postgresCopyStreamer;
 
-    private long lastTransactionCount = 0;
+    private final PersistanceTransactions transactions;
 
     private final static String masterQuery = """
                     SELECT oid, typname, typnamespace
@@ -113,7 +115,7 @@ public class PGTypeServiceImpl implements PGTypeService {
         try (Connection connection = databaseConfig.getConnection()) {
             svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCountMain(connection);
-
+            long lastTransactionCount = transactions.get(PgKey.PG_TYPE);
             if (currentTransactionCount == lastTransactionCount) {
                 logger.info("[pg_type] {} No changes detected. Skipping synchronization.", 
                         currentTransactionCount);
@@ -127,7 +129,7 @@ public class PGTypeServiceImpl implements PGTypeService {
                     masterQuery, this::serializeRowFromResultSet, copySql);
 
             compareSnapshots();
-            lastTransactionCount = currentTransactionCount;
+            transactions.put(PgKey.PG_TYPE, currentTransactionCount);
             writeStatistics(currentTransactionCount, "pg_type", connection);
         } catch (SQLException | IOException e) {
             logger.error("[pg_type] Error during synchronization", e);

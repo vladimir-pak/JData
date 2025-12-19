@@ -19,6 +19,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.config.PersistanceTransactions;
+import com.gpb.jdata.config.PersistanceTransactions.PgKey;
 import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.master.PGAttributeId;
@@ -71,8 +73,7 @@ public class PGAttributeServiceImpl implements PGAttributeService {
                     FROM STDIN WITH (FORMAT text)
                     """;
     
-
-    private long lastTransactionCount = 0;
+    private final PersistanceTransactions transactions;
 
     /**
      * Создание начального снапшота и запись данных в таблицу репликации
@@ -125,6 +126,7 @@ public class PGAttributeServiceImpl implements PGAttributeService {
             svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCountMain(connection);
 
+            long lastTransactionCount = transactions.get(PgKey.PG_ATTRIBUTE);
             if (currentTransactionCount == lastTransactionCount) {
                 logger.info("[pg_attribute] {} No changes detected. Skipping synchronization.", 
                         currentTransactionCount);
@@ -138,7 +140,7 @@ public class PGAttributeServiceImpl implements PGAttributeService {
                     masterQuery, this::serializeRowFromResultSet, copySql);
 
             compareSnapshots();
-            lastTransactionCount = currentTransactionCount;
+            transactions.put(PgKey.PG_ATTRIBUTE, currentTransactionCount);
             writeStatistics(currentTransactionCount, "pg_attribute", connection);
         } catch (SQLException | IOException e) {
             logger.error("[pg_attribute] Error during synchronization", e);

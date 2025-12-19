@@ -22,6 +22,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.config.PersistanceTransactions;
+import com.gpb.jdata.config.PersistanceTransactions.PgKey;
 import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.master.PGConstraint;
@@ -48,7 +50,7 @@ public class PGConstraintServiceImpl implements PGConstraintService {
 
     private final ClassDiffContainer diffContainer;
 
-    private long lastTransactionCount = 0;
+    private final PersistanceTransactions transactions;
 
     /**
      * Создание начального снапшота и запись данных в таблицу репликации
@@ -95,6 +97,7 @@ public class PGConstraintServiceImpl implements PGConstraintService {
             svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCountMain(connection);
 
+            long lastTransactionCount = transactions.get(PgKey.PG_CONSTRAINT);
             if (currentTransactionCount == lastTransactionCount) {
                 logger.info("[pg_constraint] {} No changes detected. Skipping synchronization.", 
                         currentTransactionCount);
@@ -106,7 +109,7 @@ public class PGConstraintServiceImpl implements PGConstraintService {
 
             List<PGConstraint> newData = readMasterData(connection);
             compareSnapshots(newData, connection);
-            lastTransactionCount = currentTransactionCount;
+            transactions.put(PgKey.PG_CONSTRAINT, currentTransactionCount);
             writeStatistics(currentTransactionCount, "pg_constraint", connection);
         } catch (SQLException e) {
             logger.error("[pg_constraint] Error during synchronization", e);
