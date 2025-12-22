@@ -51,7 +51,7 @@ public class SchemaService {
             .<Callable<Void>>map(oid -> () -> {
                 SchemaDTO body = schemaRepository.getSchemaByOid(oid);
                 body.setDatabase(ordProperties.getPrefixFqn());
-                ordaClient.sendPutRequest(url, body, "Создание или обновление схемы");
+                ordaClient.sendPutRequest(url, body, "Создание или обновление схемы " + body.getName());
                 return null;
             })
             .toList();

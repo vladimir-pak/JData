@@ -80,9 +80,9 @@ public class TableService {
             String table  = (String) tableRows.get(0).get("tablename");
             List<Map<String, Object>> parts = partitionRepository.getPartitions(schema, table);
             TableDTO body = TableMapper.toRequestBody(
-                        tableRows, parts, tableRepository, ordProperties.getPrefixFqn());
+                    tableRows, parts, tableRepository, ordProperties.getPrefixFqn());
             String url = ordaApiUrl + TABLE_URL;
-            ordaClient.sendPutRequest(url, body, "Создание или обновление таблицы " + table);
+            ordaClient.sendPutRequest(url, body, String.format("Создание или обновление таблицы %s.%s", schema, table));
         }
     }
 
@@ -98,14 +98,14 @@ public class TableService {
         try {
             String url = ordaApiUrl + TABLE_URL + "/name/" + fqn;
             if (!ordaClient.isProjectEntity(fqn)) {
-                ordaClient.sendDeleteRequest(url, "Удаление таблицы " + tableName);
+                ordaClient.sendDeleteRequest(url, "Удаление таблицы " + fqn);
             }
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
                 log.warn("Таблица не найдена: {}", fqn);
             }
         } catch (Exception e) {
-            log.error("Ошибка при удалении таблицы {}: {}", tableName, e.getMessage());
+            log.error("Ошибка при удалении таблицы {}: {}", fqn, e.getMessage());
         }
     }
 }

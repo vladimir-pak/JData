@@ -56,7 +56,9 @@ public class ColumnMapper {
     }
 
     public static List<ColumnDTO> toDTOListFromMap(List<Map<String, Object>> maps) {
-        return maps.stream().map(ColumnMapper::toDTO).collect(Collectors.toList());
+        return maps.stream()
+                .filter(map -> !((String) map.get("columnname")).contains("pg.dropped"))
+                .map(ColumnMapper::toDTO).collect(Collectors.toList());
     }
 
     public static String dataTypeDisplay(String pgTypName, Integer atttypmod) {
