@@ -84,9 +84,10 @@ public class MetadataService {
 
     public void handleDeletionsInOrd() {
         try {
+            logger.info("Начало обработки удаленных сущностей в ОРДе.");
             schemaService.handleDeletedInOrd();
             tableService.handleDeletedInOrd();
-            logger.info("Обработка удалений завершена успешно.");
+            logger.info("Обработка удаленных сущностей в ОРДе завершена успешно.");
         } catch (Exception e) {
             logger.error("Ошибка при обработке удалений: {}", e.getMessage(), e);
         }
