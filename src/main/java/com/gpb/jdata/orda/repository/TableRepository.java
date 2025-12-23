@@ -1,7 +1,10 @@
 package com.gpb.jdata.orda.repository;
 
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -100,5 +103,20 @@ public class TableRepository {
             where cl.oid = ?
         """;
         return jdbcTemplate.queryForList(sql, tableId);
+    }
+
+    public Set<String> findAllTablesBySchema(String schema) {
+        String sql = """
+            select nsp.nspname || '.' || cl.relname as tablename
+            from pg_class_rep cl
+            join pg_namespace_rep nsp on cl.relnamespace = nsp.oid
+            where nsp.nspname = ?
+        """;
+        try {
+            List<String> names = jdbcTemplate.queryForList(sql, String.class, schema);
+            return new HashSet<>(names);
+        } catch (EmptyResultDataAccessException e) {
+            return Collections.emptySet();
+        }
     }
 }

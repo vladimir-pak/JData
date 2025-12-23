@@ -47,4 +47,12 @@ public class MetadataController {
         metadataService.initialMetadata();
         return ResponseEntity.ok().build();
     }
+
+    @PostMapping("/ord/delete")
+    @Operation(summary = "Удаление удаленных сущностей в ОРДе")
+    public ResponseEntity<Void> deleteMetadataOrd(HttpServletRequest httpServletRequest) {
+        logger.logApiCall(httpServletRequest, "DeleteMetadata");
+        metadataService.handleDeletionsInOrd();
+        return ResponseEntity.ok().build();
+    }
 }

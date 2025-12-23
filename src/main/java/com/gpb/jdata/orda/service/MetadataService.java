@@ -81,4 +81,14 @@ public class MetadataService {
             logger.error("Ошибка при обработке удалений: {}", e.getMessage(), e);
         }
     }
+
+    public void handleDeletionsInOrd() {
+        try {
+            schemaService.handleDeletedInOrd();
+            tableService.handleDeletedInOrd();
+            logger.info("Обработка удалений завершена успешно.");
+        } catch (Exception e) {
+            logger.error("Ошибка при обработке удалений: {}", e.getMessage(), e);
+        }
+    }
 }

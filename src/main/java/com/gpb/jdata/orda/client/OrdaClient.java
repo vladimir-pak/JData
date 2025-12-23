@@ -2,15 +2,19 @@ package com.gpb.jdata.orda.client;
 
 import java.net.URI;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -19,9 +23,11 @@ import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.orda.service.KeycloakAuthService;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class OrdaClient {
     private final SvoiCustomLogger svoiLogger;
 
@@ -106,6 +112,32 @@ public class OrdaClient {
             throw e;
         } catch (Exception e) {
             svoiLogger.logOrdaCall("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
+        }
+    }
+
+    public Map<String, Object> sendGetRequest(String url, Map<String, String> params) throws Exception {
+        try {
+            MultiValueMap<String, String> multiValueParams = new LinkedMultiValueMap<>();
+            if (params != null) {
+                params.forEach(multiValueParams::add);
+            }
+            UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url)
+                    .queryParams(multiValueParams);
+            
+            HttpHeaders headers = createHeaders();
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                builder.build().toUri(), HttpMethod.GET, entity, new ParameterizedTypeReference<Map<String, Object>>() {});
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return response.getBody();
+            } else {
+                throw new RuntimeException("HTTP ошибка: " + response.getStatusCode());
+            }
+        } catch (Exception e) {
+            log.error("Ошибка при GET запросе: {}. {}", url, e.getMessage());
+            throw e;
         }
     }
     
