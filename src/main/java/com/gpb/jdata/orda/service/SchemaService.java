@@ -128,7 +128,7 @@ public class SchemaService {
             List<Map<String, Object>> data = (List<Map<String, Object>>) response.get("data");
             if (data != null && !data.isEmpty()) {
                 for (Map<String, Object> schema : data) {
-                    fqnList.add((String) schema.get("fullyQualifiedName"));
+                    fqnList.add((String) schema.get("name"));
                 }
             }
 

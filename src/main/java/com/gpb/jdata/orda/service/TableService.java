@@ -150,7 +150,8 @@ public class TableService {
             List<Map<String, Object>> data = (List<Map<String, Object>>) response.get("data");
             if (data != null && !data.isEmpty()) {
                 for (Map<String, Object> table : data) {
-                    fqnList.add((String) table.get("fullyQualifiedName"));
+                    String schemaTable = String.format("%s.%s", schema, (String) table.get("name"));
+                    fqnList.add(schemaTable);
                 }
             }
 

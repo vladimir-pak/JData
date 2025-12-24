@@ -97,8 +97,8 @@ public class TableRepository {
     public List<Map<String, Object>> getTableInfoById(int tableId) {
         String sql = """
             select nsp.nspname || '.' || cl.relname as tablename, att.attname , att.attnum
-            from pg_class_rep cl
-            join pg_namespace_rep nsp on cl.relnamespace = nsp.oid
+            from jdata.pg_class_rep cl
+            join jdata.pg_namespace_rep nsp on cl.relnamespace = nsp.oid
             left join pg_attribute_rep att on cl."oid" = att.attrelid
             where cl.oid = ?
         """;
@@ -108,8 +108,8 @@ public class TableRepository {
     public Set<String> findAllTablesBySchema(String schema) {
         String sql = """
             select nsp.nspname || '.' || cl.relname as tablename
-            from pg_class_rep cl
-            join pg_namespace_rep nsp on cl.relnamespace = nsp.oid
+            from jdata.pg_class_rep cl
+            join jdata.pg_namespace_rep nsp on cl.relnamespace = nsp.oid
             where nsp.nspname = ?
         """;
         try {
