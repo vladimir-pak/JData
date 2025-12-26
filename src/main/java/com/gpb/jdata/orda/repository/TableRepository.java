@@ -55,6 +55,7 @@ public class TableRepository {
               on cl.relnamespace = nsp."oid"
             left join jdata.pg_attribute_rep attr
               on cl."oid" = attr.attrelid
+             and attr.attnum > 0
             left join jdata.pg_constraint_rep con
               on cl."oid" = con.conrelid
              and cl.relnamespace = con.connamespace
