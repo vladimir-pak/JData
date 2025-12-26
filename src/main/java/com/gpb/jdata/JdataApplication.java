@@ -17,6 +17,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.retry.annotation.EnableRetry;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
@@ -29,6 +30,7 @@ import java.net.UnknownHostException;
 @SpringBootApplication
 @EnableScheduling
 @EnableAsync
+@EnableRetry
 public class JdataApplication {
 	private final SvoiCustomLogger svoiCustomLogger;
 	private final LogPartitionRepository logPartitionRepository;

@@ -2,7 +2,6 @@ package com.gpb.jdata.orda.client;
 
 import java.net.URI;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -12,10 +11,14 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -75,44 +78,48 @@ public class OrdaClient {
         return false;
     }
 
+    @Retryable(
+        retryFor = HttpServerErrorException.class,
+        maxAttempts = 3,
+        backoff = @Backoff(delay = 1000)
+    )
     public <T> void sendPostRequest(String url, T body, String actionDescription) {
-        try {
-            HttpHeaders headers = createHeaders();
-            HttpEntity<T> request = new HttpEntity<>(body, headers);
-            restTemplate.postForObject(url, request, Void.class);
-            svoiLogger.logOrdaCall(actionDescription);
-        } catch (Exception e) {
-            svoiLogger.logOrdaCall("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
-        }
+        HttpHeaders headers = createHeaders();
+        HttpEntity<T> request = new HttpEntity<>(body, headers);
+        restTemplate.postForObject(url, request, Void.class);
+        svoiLogger.logOrdaCall(actionDescription);
     }
 
+    @Retryable(
+        retryFor = HttpServerErrorException.class,
+        maxAttempts = 3,
+        backoff = @Backoff(delay = 1000)
+    )
     public <T> void sendPutRequest(String url, T body, String actionDescription) {
-        try {
-            HttpHeaders headers = createHeaders();
-            HttpEntity<T> request = new HttpEntity<>(body, headers);
-            restTemplate.exchange(url, HttpMethod.PUT, request, Void.class);
-            svoiLogger.logOrdaCall(actionDescription);
-        } catch (Exception e) {
-            svoiLogger.logOrdaCall("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
-            e.printStackTrace();
-        }
+        HttpHeaders headers = createHeaders();
+        HttpEntity<T> request = new HttpEntity<>(body, headers);
+        restTemplate.exchange(url, HttpMethod.PUT, request, Void.class);
+        svoiLogger.logOrdaCall(actionDescription);
     }
 
+    @Retryable(
+        retryFor = HttpServerErrorException.class,
+        maxAttempts = 3,
+        backoff = @Backoff(delay = 1000)
+    )
     public void sendDeleteRequest(String url, String actionDescription) {
-        try {
-            UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url)
-                .queryParam("recursive", "true");
-            URI uri = builder.build().toUri();
-            HttpHeaders headers = createHeaders();
-            HttpEntity<Void> request = new HttpEntity<>(headers);
-            restTemplate.exchange(uri, HttpMethod.DELETE, request, Void.class);
-            svoiLogger.logOrdaCall(actionDescription);
-        } catch (HttpClientErrorException e) {
-            svoiLogger.logOrdaCall("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
-            throw e;
-        } catch (Exception e) {
-            svoiLogger.logOrdaCall("Ошибка при " + actionDescription + ": " + url + ". " + e.getMessage());
-        }
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url)
+            .queryParam("recursive", "true");
+        URI uri = builder.build().toUri();
+        HttpHeaders headers = createHeaders();
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+        restTemplate.exchange(uri, HttpMethod.DELETE, request, Void.class);
+        svoiLogger.logOrdaCall(actionDescription);
+    }
+
+    @Recover
+    public void recover(Throwable e, String url, String actionDescription) {
+        svoiLogger.logOrdaCall("Ошибка при " + actionDescription + ": " + url + " после всех ретраев: " + e.getMessage());
     }
 
     public Map<String, Object> sendGetRequest(String url, Map<String, String> params) throws Exception {
