@@ -129,7 +129,7 @@ public class PGPartitionServiceImpl implements PGPartitionService {
      */
     private List<PGPartition> readMasterData(Connection connection) throws SQLException {
         List<PGPartition> data = new ArrayList<>();
-        String sql = "SELECT oid, parrelid, parnatts, parkind, paratts FROM pg_catalog.pg_partition";
+        String sql = "SELECT oid, parrelid, parnatts, parkind, paratts, parlevel, paristemplate FROM pg_catalog.pg_partition";
         try (Statement stmt = connection.createStatement();
             ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
