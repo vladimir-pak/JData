@@ -24,7 +24,6 @@ import com.gpb.jdata.config.PersistanceTransactions;
 import com.gpb.jdata.config.PersistanceTransactions.PgKey;
 import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.log.SvoiSeverityEnum;
-import com.gpb.jdata.models.master.PGPartition;
 import com.gpb.jdata.models.master.PGPartitionRule;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGPartitionRuleReplication;
@@ -129,9 +128,8 @@ public class PGPartitionRuleServiceImpl implements PGPartitionRuleService {
     public void replicate(List<PGPartitionRule> data, Connection connection) throws SQLException {
         String db = connection.getMetaData().getURL();
         db = db.substring(db.lastIndexOf("/") + 1);
-        String finalDb = db;
         List<PGPartitionRuleReplication> replicated = data.stream()
-                .map(r -> new PGPartitionRuleReplication(r.getOid(), r.getParchildrelid(), r.getParoid(), finalDb))
+                .map(r -> new PGPartitionRuleReplication(r.getOid(), r.getParchildrelid(), r.getParoid()))
                 .collect(Collectors.toList());
 
         if (replicated != null && !replicated.isEmpty()) {
@@ -157,7 +155,7 @@ public class PGPartitionRuleServiceImpl implements PGPartitionRuleService {
             if (replicaRow == null) {
                 toAdd.add(master);
             } else {
-                if (!convertToReplication(master, replicaRow.getDb()).equals(replicaRow)) {
+                if (!convertToReplication(master).equals(replicaRow)) {
                     toUpdate.add(master);
                 }
                 toDelete.remove(master.getOid());
@@ -183,8 +181,8 @@ public class PGPartitionRuleServiceImpl implements PGPartitionRuleService {
         }
     }
 
-    private PGPartitionRuleReplication convertToReplication(PGPartitionRule rule, String db) {
-        return new PGPartitionRuleReplication(rule.getOid(), rule.getParchildrelid(), rule.getParoid(), db);
+    private PGPartitionRuleReplication convertToReplication(PGPartitionRule rule) {
+        return new PGPartitionRuleReplication(rule.getOid(), rule.getParchildrelid(), rule.getParoid());
     }
 
     private long getTransactionCount(Connection connection) throws SQLException {
