@@ -33,7 +33,26 @@ public class TableRepository {
                    dt.description as table_description,
                    attr.attname as columnname,
                    tp.typname as dtype,
-                   attr.atttypmod as dtlength,
+                   case
+                        when tp.typname in ('bpchar', 'varchar') then
+                            case when attr.atttypmod < 0 then null else attr.atttypmod - 4 end
+                        when tp.typname = 'numeric' then
+                            case when attr.atttypmod < 0
+                                then null
+                                else ((attr.atttypmod - 4) >> 16) & 65535
+                            end
+                        else null
+                        end as dtlength,
+                   case
+                        when tp.typname = 'numeric' and attr.atttypmod >= 0
+                            then ((attr.atttypmod - 4) >> 16) & 65535
+                        else null
+                        end as numeric_precision,
+                        case
+                        when tp.typname = 'numeric' and attr.atttypmod >= 0
+                            then (attr.atttypmod - 4) & 65535
+                        else null
+                        end as numeric_scale,
                    attr.attnotnull as notnull,
                    attr.attnum as attnum,
                    dat.description as column_description,

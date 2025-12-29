@@ -1,20 +1,37 @@
 package com.gpb.jdata.orda.model;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.ToString;
+import lombok.NoArgsConstructor;
 
 @Data
-@EqualsAndHashCode(callSuper = true)
-@ToString(callSuper = true)
-public class TableEntity extends BaseEntity {
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+public class TableEntity {
+    private String name;
+    private String displayName;
     private String databaseSchema;
+    private String description;
     private String tableType;
-    private String viewDefinition;
     private Boolean isProjectEntity;
+    private String viewDefinition;
     private List<ColumnEntity> columns;
-    private List<ConstraintEntity> constraints;
-    private PartitionEntity partition;
+    private List<TableConstraints> tableConstraints;
+
+    @JsonIgnore
+    private Map<String, Object> additionalProperties = new HashMap<>();
+    
+    @JsonAnySetter
+    public void setAdditionalProperty(String name, Object value) {
+        additionalProperties.put(name, value);
+    }
 }

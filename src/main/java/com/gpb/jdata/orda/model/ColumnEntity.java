@@ -1,17 +1,27 @@
 package com.gpb.jdata.orda.model;
 
+import com.gpb.jdata.orda.enums.TypesWithDataLength;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.ToString;
+import lombok.NoArgsConstructor;
 
 @Data
-@EqualsAndHashCode(callSuper = true)
-@ToString(callSuper = true)
-public class ColumnEntity extends BaseEntity {
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class ColumnEntity {
+    private String name;
     private String dataType;
-    private Integer dataLength;
     private String dataTypeDisplay;
-    private String fullyQualifiedName;
+    private String dataLength;
     private String constraint;
     private Integer ordinalPosition;
+    private String description;
+    private String arrayDataType;
+
+    public void setDataLength(String dataLength) {
+        this.dataLength = TypesWithDataLength.getProcessedDataLength(this.dataType, dataLength);
+    }
 }

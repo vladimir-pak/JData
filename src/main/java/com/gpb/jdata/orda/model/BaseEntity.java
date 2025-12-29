@@ -10,7 +10,6 @@ import lombok.ToString;
 @EqualsAndHashCode(callSuper = false)
 @ToString(callSuper = false)
 public class BaseEntity implements Serializable {
-    private String id;
     private String name;
     private String description;
 }

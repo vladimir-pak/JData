@@ -1,25 +1,28 @@
 package com.gpb.jdata.service.impl;
 
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
-import com.gpb.jdata.models.master.PGAttrdef;
+import com.gpb.jdata.config.PersistanceTransactions;
+import com.gpb.jdata.config.PersistanceTransactions.PgKey;
+import com.gpb.jdata.log.SvoiCustomLogger;
+import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.master.PGAttrdefId;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGAttrdefReplication;
@@ -27,6 +30,8 @@ import com.gpb.jdata.models.replication.Statistics;
 import com.gpb.jdata.repository.ActionRepository;
 import com.gpb.jdata.repository.PGAttrdefRepository;
 import com.gpb.jdata.service.PGAttrdefService;
+import com.gpb.jdata.utils.PostgresCopyStreamer;
+import com.gpb.jdata.utils.diff.ClassDiffContainer;
 
 import lombok.RequiredArgsConstructor;
 
@@ -36,153 +41,205 @@ and inserting, deleting or updating it in the replica tables.
  */
 @Service
 @RequiredArgsConstructor
-@Deprecated
 public class PGAttrdefServiceImpl implements PGAttrdefService {
 
     private static final Logger logger = LoggerFactory.getLogger(PGAttrdefService.class);
+    private final SvoiCustomLogger svoiLogger;
 
     private final ActionRepository actionRepository;
     private final PGAttrdefRepository pgAttrdefRepository;
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
-    
-    private long lastTransactionCount = 0;
+
+    private final ClassDiffContainer diffContainer;
+
+    private final PostgresCopyStreamer postgresCopyStreamer;
+
+    private final static String masterQuery = """
+                    SELECT attrelid, attnum, attname, atthasdef, attnotnull, atttypid, atttypmod
+                    FROM pg_catalog.pg_attrdef
+                    """;
+    private final static String initialCopySql = """
+                    COPY jdata.pg_attrdef_rep (
+                        attrelid, attnum, attname, atthasdef,
+                        attnotnull, atttypid, atttypmod
+                    )
+                    FROM STDIN WITH (FORMAT text)
+                    """;
+    private final static String copySql = """
+                    COPY jdata.pg_attrdef_rep_tmp (
+                        attrelid, attnum, attname, atthasdef,
+                        attnotnull, atttypid, atttypmod
+                    )
+                    FROM STDIN WITH (FORMAT text)
+                    """;
+
+    private final PersistanceTransactions transactions;
 
     /**
      * Создание начального снапшота и запись данных в таблицу репликации
      */
     @Override
-    public List<PGAttrdef> initialSnapshot(Connection connection) throws SQLException {
-        List<PGAttrdef> data = readMasterData(connection);
-        logger.info("[pg_attrdef] Initial snapshot created...");
-        replicate(data, connection);
-        writeStatistics((long) data.size(), "pg_attrdef", connection);
-        logAction("INITIAL_SNAPSHOT", "pg_attrdef", data.size() + " records added", "");
-        return data;
+    public void initialSnapshot() throws SQLException {
+        svoiLogger.send(
+                "startInitSnapshot",
+                "Start PGAttrdef init",
+                "Started PGAttrdef init",
+                SvoiSeverityEnum.ONE);
+
+        try (Connection connection = databaseConfig.getConnection()) {
+            logger.info("[pg_attrdef] Starting initial snapshot (streaming COPY)...");
+            
+            svoiLogger.logConnectToSource();
+
+            long inserted = postgresCopyStreamer.streamCopy(
+                    masterQuery, this::serializeRowFromResultSet, initialCopySql);
+
+            writeStatistics(inserted, "pg_attrdef_rep", connection);
+            logAction("INITIAL_SNAPSHOT", "pg_attrdef", 
+                    inserted + " records added", "");
+
+            logger.info("[pg_attrdef] Initial snapshot finished. Inserted: {}", inserted);
+        } catch (SQLException | IOException e) {
+            logger.error("[pg_attrdef] Error during initial snapshot", e);
+            svoiLogger.logDbConnectionError(e);
+            throw (e instanceof SQLException) ? (SQLException) e : 
+                    new SQLException("Initial snapshot failed", e);
+        }
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Void> initialSnapshotAsync() throws SQLException {
+        initialSnapshot();
+        return CompletableFuture.completedFuture(null);
     }
 
     /**
      * Синхронизация данных
      */
     @Override
-    public void synchronize() {
+    public void synchronize() throws SQLException {
+        svoiLogger.send(
+			"startSync", 
+			"Start PGAttrdef sync", 
+			"Started PGAttrdef sync", 
+			SvoiSeverityEnum.ONE);
+
         try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
             long currentTransactionCount = getTransactionCount(connection);
 
+            long lastTransactionCount = transactions.get(PgKey.PG_ATTRDEF);
             if (currentTransactionCount == lastTransactionCount) {
-                logger.info("[pg_attrdef] No changes detected. Skipping synchronization.");
+                logger.info("[pg_attrdef] {} No changes detected. Skipping synchronization.", 
+                        currentTransactionCount);
                 return;
             }
-            
+
             long diff = currentTransactionCount - lastTransactionCount;
             logger.info("[pg_attrdef] {} Changes detected. Starting synchronization...", diff);
+            pgAttrdefRepository.truncateTempTable();
+            postgresCopyStreamer.streamCopy(
+                    masterQuery, this::serializeRowFromResultSet, copySql);
 
-            List<PGAttrdef> newData = readMasterData(connection);
-            compareSnapshots(newData, connection);
-            lastTransactionCount = currentTransactionCount;
+            compareSnapshots();
+            transactions.put(PgKey.PG_ATTRDEF, currentTransactionCount);
             writeStatistics(currentTransactionCount, "pg_attrdef", connection);
-
-        } catch (SQLException e) {
+        } catch (SQLException | IOException e) {
             logger.error("[pg_attrdef] Error during synchronization", e);
+            svoiLogger.logDbConnectionError(e);
+            throw (e instanceof SQLException) ? (SQLException) e : 
+                    new SQLException("Synchronization failed", e);
         }
     }
 
-    /**
-     * Чтение данных из таблицы pg_attrdef
-     */
-    // alrelid + adnum | adbin колонка доп
-    private List<PGAttrdef> readMasterData(Connection connection) throws SQLException {
-        List<PGAttrdef> data = new ArrayList<>();
-
-        try (Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery("SELECT * FROM pg_catalog.pg_attrdef")) {
-            while (resultSet.next()) {
-                data.add(new PGAttrdef(
-                        resultSet.getLong("adrelid"),
-                        resultSet.getLong("adnum"),
-                        resultSet.getString("adbin")
-                ));
-            }
-        }
-        return data;
+    @Override
+    @Async
+    public CompletableFuture<Void> synchronizeAsync() throws SQLException {
+        synchronize();
+        return CompletableFuture.completedFuture(null);
     }
 
     /**
-     * Репликация данных в таблицу репликации
+     * Сериализация одной строки для COPY в текстовом формате (TAB-separated).
+     * Формат: col1\tcol2\t...\tcolN\n
+     * NULL -> \N
+     * boolean -> t/f
      */
-    private void replicate(List<PGAttrdef> data, Connection connection) throws SQLException {
-        String db = connection.getMetaData().getURL();
-        db = db.substring(db.lastIndexOf("/") + 1);
+    private String serializeRowFromResultSet(ResultSet rs) {
+        try {
+            long adrelid = rs.getLong("adrelid");
+            long adnum = rs.getLong("adnum");
+            String adbin = rs.getString("adbin");
 
-        List<PGAttrdefReplication> replicationData = data.stream()
-                .map(d -> new PGAttrdefReplication(
-                        new PGAttrdefId(d.getAdrelid(), d.getAdnum()), d.getAdbin(), "pg_attrdef_rep"))
-                .collect(Collectors.toList());
-        if (replicationData != null && !replicationData.isEmpty()) {
-            pgAttrdefRepository.saveAll(replicationData);
-            logger.info("[pg_attrdef_rep] Data replicated successfully.");
-        } else {
-            logger.info("[pg_attrdef_rep] Data is empty.");
+            StringBuilder sb = new StringBuilder(128);
+            sb.append(escape(adrelid)).append('\t');
+            sb.append(escape(adnum)).append('\t');
+            sb.append(escape(adbin)).append('\n');
+
+            return sb.toString();
+        } catch (SQLException e) {
+            logger.error("Error serializing ResultSet row", e);
+            throw new RuntimeException(e);
         }
+    }
+
+    private String escape(Object v) {
+        if (v == null) return "\\N";
+        String s = String.valueOf(v);
+        // Простейшее экранирование для COPY text
+        return s.replace("\\", "\\\\")
+                .replace("\t", "\\t")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
     }
 
     /**
      * Сравнение снапшотов
      */
-    private void compareSnapshots(List<PGAttrdef> newData, Connection connection) throws SQLException {
-        List<PGAttrdefReplication> replicationData = pgAttrdefRepository.findAll();
-        Map<PGAttrdefId, PGAttrdefReplication> replicationMap = replicationData.stream()
-                .collect(Collectors.toMap(PGAttrdefReplication::getId, r -> r));
-
-        List<PGAttrdef> toAdd = new ArrayList<>();
-        List<PGAttrdef> toUpdate = new ArrayList<>();
-        List<PGAttrdefId> toDelete = new ArrayList<>(replicationMap.keySet());
-
-        for (PGAttrdef masterRecord : newData) {
-            PGAttrdefId oid = new PGAttrdefId(masterRecord.getAdrelid(), masterRecord.getAdnum());
-            PGAttrdefReplication replicationRecord = replicationMap.get(oid);
-            if (replicationRecord == null) {
-                toAdd.add(masterRecord);
-            } else {
-                if (!convertToReplication(masterRecord).equals(replicationRecord)) {
-                    toUpdate.add(masterRecord);
-                }
-                toDelete.remove(oid);
-            }
-        }
+    private void compareSnapshots() throws SQLException {
+        List<PGAttrdefReplication> toAdd = pgAttrdefRepository.findNew();
+        List<PGAttrdefReplication> toUpdate = pgAttrdefRepository.findUpdated();
+        List<PGAttrdefReplication> toDelete = pgAttrdefRepository.findDeleted();
+        List<PGAttrdefId> idsToDelete = toDelete.stream()
+                .map(r -> r.getId())
+                .collect(Collectors.toList());
 
         if (!toDelete.isEmpty()) {
             logger.info("[pg_attrdef_rep] Deleting {} records from the replica table", toDelete.size());
-            pgAttrdefRepository.deleteAllById(toDelete);
-            logAction("DELETE", "pg_attrdef_rep", toDelete.size() + " records deleted", "");
+            pgAttrdefRepository.deleteAllById(idsToDelete);
+            idsToDelete.forEach(e -> {
+                    if (!diffContainer.containsInDeletedOids(e.getAdrelid())) {
+                        diffContainer.addUpdated(e.getAdrelid());
+                    }
+            });
+            logAction("DELETE", "pg_attrdef_rep", toDelete.size() 
+                    + " records deleted", "");
         }
 
         if (!toAdd.isEmpty()) {
             logger.info("[pg_attrdef_rep] Adding {} records to the replica table", toAdd.size());
-            replicate(toAdd, connection);
-            logAction("INSERT", "pg_attrdef_rep", toAdd.size() + " records inserted", "");
+            pgAttrdefRepository.saveAll(toAdd);
+            toAdd.forEach(e -> diffContainer.addUpdated(e.getId().getAdrelid()));
+            logAction("INSERT", "pg_attrdef_rep", toAdd.size() 
+                    + " records inserted", "");
         }
 
         if (!toUpdate.isEmpty()) {
             logger.info("[pg_attrdef_rep] Updating {} records in the replica table", toUpdate.size());
-            toUpdate.forEach(e ->
-                    logAction("UPDATE", "pg_attrdef_rep", " old: " +
-                                    pgAttrdefRepository.findById(new PGAttrdefId(e.getAdrelid(), e.getAdnum()))
-                            , " new:" + e.toString())
-            );
-            replicate(toUpdate, connection);
-            logAction("UPDATE", "pg_attrdef_rep", toUpdate.size() + " records updated", "");
+            toUpdate.forEach(e -> {
+                    diffContainer.addUpdated(e.getId().getAdrelid());
+            });
+            pgAttrdefRepository.saveAll(toUpdate);
+            logAction("UPDATE", "pg_attrdef_rep", toUpdate.size() 
+                    + " records updated", "");
         }
 
         long totalOperations = toAdd.size() + toUpdate.size() + toDelete.size();
-        writeStatistics(totalOperations, "pg_attrdef_rep", connection);
-    }
-
-    /**
-     * Конвертация объекта
-     */
-    private PGAttrdefReplication convertToReplication(PGAttrdef pgAttrdef) {
-        return new PGAttrdefReplication(new PGAttrdefId(pgAttrdef.getAdrelid(), pgAttrdef.getAdnum()), pgAttrdef.getAdbin(), "pg_attrdef_rep");
+        try (Connection connection = databaseConfig.getConnection()) {
+            writeStatistics(totalOperations, "pg_attrdef_rep", connection);
+        }
     }
 
     /**

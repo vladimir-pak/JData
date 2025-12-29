@@ -20,9 +20,11 @@ import org.springframework.web.client.HttpClientErrorException;
 import com.gpb.jdata.orda.client.OrdaClient;
 import com.gpb.jdata.orda.dto.TableDTO;
 import com.gpb.jdata.orda.mapper.TableMapper;
+import com.gpb.jdata.orda.model.TableEntity;
 import com.gpb.jdata.orda.properties.OrdProperties;
 import com.gpb.jdata.orda.repository.PartitionRepository;
 import com.gpb.jdata.orda.repository.SchemaRepository;
+import com.gpb.jdata.orda.repository.TableJpaRepository;
 import com.gpb.jdata.orda.repository.TableRepository;
 import com.gpb.jdata.utils.diff.ClassDiffContainer;
 
@@ -42,6 +44,7 @@ public class TableService {
     private static final String TABLE_URL = "/tables";
     
     private final TableRepository tableRepository;
+    private final TableJpaRepository tableJpaRepository;
     private final SchemaRepository schemaRepository;
     private final PartitionRepository partitionRepository;
     private final OrdaClient ordaClient;
@@ -57,10 +60,11 @@ public class TableService {
             List<Callable<Void>> tasks = diffContainer.getUpdated().stream()
                 .<Callable<Void>>map(oid -> () -> {
                     try {
-                        List<Map<String, Object>> rows = tableRepository.getTableByOid(oid);
-                        if (rows != null && !rows.isEmpty()) {
-                            sendGrouped(rows);
-                        }
+                        // List<Map<String, Object>> rows = tableRepository.getTableByOid(oid);
+                        // if (rows != null && !rows.isEmpty()) {
+                        //     sendGrouped(rows);
+                        // }
+                        putTable(oid);
                     } catch (Exception e) {
                         log.error("Ошибка при обработке таблицы oid={}: {}", oid, e.getMessage(), e);
                     }
@@ -90,6 +94,14 @@ public class TableService {
             String url = ordaApiUrl + TABLE_URL;
             ordaClient.sendPutRequest(url, body, String.format("Создание или обновление таблицы %s.%s", schema, table));
         }
+    }
+
+    private void putTable(Long oid) {
+        TableEntity table = tableJpaRepository.findByOid(oid);
+        String url = ordaApiUrl + TABLE_URL;
+            ordaClient.sendPutRequest(url, table, 
+                    String.format("Создание или обновление таблицы %s.%s", 
+                            table.getDatabaseSchema(), table.getName()));
     }
 
     public void handleDeleted() {

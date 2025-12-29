@@ -31,6 +31,7 @@ import com.gpb.jdata.repository.ActionRepository;
 import com.gpb.jdata.repository.PGAttributeRepository;
 import com.gpb.jdata.service.PGAttributeService;
 import com.gpb.jdata.utils.PostgresCopyStreamer;
+import com.gpb.jdata.utils.diff.ClassDiffContainer;
 import com.gpb.jdata.utils.diff.NamespaceDiffContainer;
 
 import lombok.RequiredArgsConstructor;
@@ -52,7 +53,7 @@ public class PGAttributeServiceImpl implements PGAttributeService {
 
     private final PostgresCopyStreamer postgresCopyStreamer;
 
-    private final NamespaceDiffContainer diffContainer;
+    private final ClassDiffContainer diffContainer;
 
     private final static String masterQuery = """
                     SELECT attrelid, attnum, attname, atthasdef, attnotnull, atttypid, atttypmod

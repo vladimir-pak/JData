@@ -18,6 +18,7 @@ public class MetadataSnaphostService {
     private final PGNamespaceService pgNamespaceService;
     private final PGClassService pgClassService;
     private final PGAttributeService pgAttributeService;
+    private final PGAttrdefService pgAttrdefService;
     private final PGConstraintService pgConstraintService;
     private final PGDescriptionService pgDescriptionService;
     private final PGTypeService pgTypeService;
@@ -39,18 +40,19 @@ public class MetadataSnaphostService {
             // Последовательно
             pgNamespaceService.initialSnapshot();
             pgClassService.initialSnapshot();
+            pgAttributeService.initialSnapshot();
+            // pgAttrdefService.initialSnapshot();
 
             // Параллельно
             CompletableFuture<Void> f1 = pgViewsService.initialSnapshotAsync();
             CompletableFuture<Void> f2 = pgDescriptionService.initialSnapshotAsync();
             CompletableFuture<Void> f3 = pgConstraintService.initialSnapshotAsync();
             CompletableFuture<Void> f4 = pgTypeService.initialSnapshotAsync();
-            CompletableFuture<Void> f5 = pgAttributeService.initialSnapshotAsync();
-            CompletableFuture<Void> f6 = pgPartitionService.initialSnapshotAsync();
-            CompletableFuture<Void> f7 = pgDatabaseService.initialSnapshotAsync();
+            CompletableFuture<Void> f5 = pgPartitionService.initialSnapshotAsync();
+            CompletableFuture<Void> f6 = pgDatabaseService.initialSnapshotAsync();
 
             // Ждем завершения всех задач
-            CompletableFuture.allOf(f1, f2, f3, f4, f5, f6, f7).join();
+            CompletableFuture.allOf(f1, f2, f3, f4, f5, f6).join();
 
             metadataService.syncMetadata();
 
@@ -69,17 +71,18 @@ public class MetadataSnaphostService {
             // Последовательно
             pgNamespaceService.synchronize();
             pgClassService.synchronize();
+            pgAttributeService.synchronize();
+            // pgAttrdefService.synchronize();
 
             // Параллельно
             CompletableFuture<Void> f1 = pgViewsService.synchronizeAsync();
             CompletableFuture<Void> f2 = pgDescriptionService.synchronizeAsync();
             CompletableFuture<Void> f3 = pgConstraintService.synchronizeAsync();
             CompletableFuture<Void> f4 = pgTypeService.synchronizeAsync();
-            CompletableFuture<Void> f5 = pgAttributeService.synchronizeAsync();
-            CompletableFuture<Void> f6 = pgPartitionService.synchronizeAsync();
+            CompletableFuture<Void> f5 = pgPartitionService.synchronizeAsync();
 
             // Ждем завершения всех задач
-            CompletableFuture.allOf(f1, f2, f3, f4, f5, f6).join();
+            CompletableFuture.allOf(f1, f2, f3, f4, f5).join();
 
             metadataService.syncMetadata();
 

@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import com.gpb.jdata.orda.service.MetadataService;
 import com.gpb.jdata.properties.SyncProperties;
+import com.gpb.jdata.service.PGAttrdefService;
 import com.gpb.jdata.service.PGAttributeService;
 import com.gpb.jdata.service.PGClassService;
 import com.gpb.jdata.service.PGConstraintService;
@@ -31,6 +32,7 @@ public class Init {
     private final PGNamespaceService pgNamespaceService;
     private final PGClassService pgClassService;
     private final PGAttributeService pgAttributeService;
+    // private final PGAttrdefService pgAttrdefService;
     private final PGConstraintService pgConstraintService;
     private final PGDescriptionService pgDescriptionService;
     private final PGTypeService pgTypeService;
@@ -68,6 +70,7 @@ public class Init {
             pgNamespaceService.synchronize();
             pgClassService.synchronize();
             pgAttributeService.synchronize();
+            // pgAttrdefService.synchronize();
 
             // Параллельно
             CompletableFuture<Void> f1 = pgViewsService.synchronizeAsync();

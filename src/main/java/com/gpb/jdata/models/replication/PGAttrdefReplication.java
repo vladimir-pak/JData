@@ -32,26 +32,23 @@ public class PGAttrdefReplication implements Serializable {
 	@Column(name = "adbin", length = 10000000)
 	private String adbin;
 
-	@Column(name = "db")
-	private String db;
-
     @Override
 	public boolean equals(Object o) {
 		if (this == o) return true;
 		if (o == null || getClass() != o.getClass()) return false;
 		PGAttrdefReplication that = (PGAttrdefReplication) o;
-		return Objects.equals(id, that.id) && Objects.equals(adbin, that.adbin) && Objects.equals(db, that.db);
+		return Objects.equals(id, that.id) && Objects.equals(adbin, that.adbin);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(id, adbin, db);
+		return Objects.hash(id, adbin);
 	}
 
     @Override
     public String toString() {
         return String.format(
-            "PGAttrdefReplication{id=%s, adbin='%s', db='%s'}", 
-            id, adbin, db);
+            "PGAttrdefReplication{id=%s, adbin='%s'}", 
+            id, adbin);
     }
 }
