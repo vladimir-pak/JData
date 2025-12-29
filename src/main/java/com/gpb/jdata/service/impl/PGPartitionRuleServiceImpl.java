@@ -9,15 +9,22 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.gpb.jdata.config.DatabaseConfig;
+import com.gpb.jdata.config.PersistanceTransactions;
+import com.gpb.jdata.config.PersistanceTransactions.PgKey;
+import com.gpb.jdata.log.SvoiCustomLogger;
+import com.gpb.jdata.log.SvoiSeverityEnum;
+import com.gpb.jdata.models.master.PGPartition;
 import com.gpb.jdata.models.master.PGPartitionRule;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGPartitionRuleReplication;
@@ -31,33 +38,57 @@ import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
-@Deprecated
 public class PGPartitionRuleServiceImpl implements PGPartitionRuleService {
     private static final Logger logger = LoggerFactory.getLogger(PGPartitionRuleServiceImpl.class);
+    private final SvoiCustomLogger svoiLogger;
     
     private final PGPartitionRuleRepository pgPartitionRuleRepository;
     private final ActionRepository actionRepository;
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
 
-    private long lastTransactionCount = 0;
+    private final PersistanceTransactions transactions;
 
     @Override
     @Transactional
-    public List<PGPartitionRule> initialSnapshot(Connection connection) throws SQLException {
-        List<PGPartitionRule> data = readMasterData(connection);
-        replicate(data, connection);
-        writeStatistics((long) data.size(), "pg_partition_rule", connection);
-        logAction("INITIAL_SNAPSHOT", "pg_partition_rule", data.size() 
-                + " records added", "");
-        return data;
+    public void initialSnapshot() throws SQLException {
+        svoiLogger.send(
+			"startInitSnapshot", 
+			"Start PGPartitionRule init", 
+			"Started PGPartitionRule init", 
+			SvoiSeverityEnum.ONE);
+        try (Connection connection = databaseConfig.getConnection()) {
+            svoiLogger.logConnectToSource();
+            List<PGPartitionRule> data = readMasterData(connection);
+            logger.info("[pg_partition_rule] Initial snapshot created...");
+            replicate(data, connection);
+            writeStatistics((long) data.size(), "pg_partition_rule", connection);
+            logAction("INITIAL_SNAPSHOT", "pg_partition_rule", data.size() 
+                    + " records added", "");
+        } catch (SQLException e) {
+            logger.error("[pg_partition_rule] Error during initialization", e);
+            svoiLogger.logDbConnectionError(e);
+        }
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Void> initialSnapshotAsync() throws SQLException {
+        initialSnapshot();
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
     @Transactional
     public void synchronize() {
+        svoiLogger.send(
+			"startSync", 
+			"Start PGPartitionRule sync", 
+			"Started PGPartitionRule sync", 
+			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
             long currentTransactionCount = getTransactionCount(connection);
+            long lastTransactionCount = transactions.get(PgKey.PG_PARYIYION_RULE);
             if (currentTransactionCount == lastTransactionCount) {
                 logger.info("[pg_partition_rule] No changes detected.");
                 return;
@@ -69,6 +100,13 @@ public class PGPartitionRuleServiceImpl implements PGPartitionRuleService {
         } catch (SQLException e) {
             logger.error("[pg_partition_rule] Error during synchronization", e);
         }
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Void> synchronizeAsync() {
+        synchronize();
+        return CompletableFuture.completedFuture(null);
     }
 
     private List<PGPartitionRule> readMasterData(Connection connection) throws SQLException {

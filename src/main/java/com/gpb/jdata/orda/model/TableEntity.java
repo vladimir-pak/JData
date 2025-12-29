@@ -26,6 +26,7 @@ public class TableEntity {
     private String viewDefinition;
     private List<ColumnEntity> columns;
     private List<TableConstraints> tableConstraints;
+    private TablePartition tablePartition;
 
     @JsonIgnore
     private Map<String, Object> additionalProperties = new HashMap<>();

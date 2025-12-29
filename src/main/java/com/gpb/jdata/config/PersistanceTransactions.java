@@ -34,7 +34,8 @@ public class PersistanceTransactions {
         PG_DESCRIPTION("PGDescription", 0L),
         PG_TYPE("PGType", 0L),
         PG_PARTITION("PGPartition", 0L),
-        PG_ATTRDEF("PGAttrdef", 0L);
+        PG_ATTRDEF("PGAttrdef", 0L),
+        PG_PARYIYION_RULE("PGPartitionRule", 0L);
 
         private final String jsonKey;
         private final long defaultValue;

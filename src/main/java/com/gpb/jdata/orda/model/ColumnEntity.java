@@ -20,6 +20,8 @@ public class ColumnEntity {
     private Integer ordinalPosition;
     private String description;
     private String arrayDataType;
+    private Integer precision;
+    private Integer scale;
 
     public void setDataLength(String dataLength) {
         this.dataLength = TypesWithDataLength.getProcessedDataLength(this.dataType, dataLength);

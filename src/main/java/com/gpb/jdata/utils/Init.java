@@ -13,6 +13,7 @@ import com.gpb.jdata.service.PGClassService;
 import com.gpb.jdata.service.PGConstraintService;
 import com.gpb.jdata.service.PGDescriptionService;
 import com.gpb.jdata.service.PGNamespaceService;
+import com.gpb.jdata.service.PGPartitionRuleService;
 import com.gpb.jdata.service.PGPartitionService;
 import com.gpb.jdata.service.PGTypeService;
 import com.gpb.jdata.service.PGViewsService;
@@ -38,6 +39,7 @@ public class Init {
     private final PGTypeService pgTypeService;
     private final PGViewsService pgViewsService;
     private final PGPartitionService pgPartitionService;
+    private final PGPartitionRuleService pgPartitionRuleService;
     private final SyncProperties syncProperties;
 
     private final MetadataService metadataService;
@@ -78,9 +80,10 @@ public class Init {
             CompletableFuture<Void> f3 = pgConstraintService.synchronizeAsync();
             CompletableFuture<Void> f4 = pgTypeService.synchronizeAsync();
             CompletableFuture<Void> f5 = pgPartitionService.synchronizeAsync();
+            CompletableFuture<Void> f6 = pgPartitionRuleService.synchronizeAsync();
 
             // Ждем завершения всех задач
-            CompletableFuture.allOf(f1, f2, f3, f4, f5).join();
+            CompletableFuture.allOf(f1, f2, f3, f4, f5, f6).join();
 
             metadataService.syncMetadata();
 

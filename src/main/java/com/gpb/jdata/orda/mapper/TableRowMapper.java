@@ -3,6 +3,7 @@ package com.gpb.jdata.orda.mapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -16,8 +17,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gpb.jdata.orda.enums.TypesWithDataLength;
 import com.gpb.jdata.orda.model.ColumnEntity;
 import com.gpb.jdata.orda.model.ConstraintType;
+import com.gpb.jdata.orda.model.IntervalType;
 import com.gpb.jdata.orda.model.TableConstraints;
 import com.gpb.jdata.orda.model.TableEntity;
+import com.gpb.jdata.orda.model.TablePartition;
 import com.gpb.jdata.orda.properties.OrdProperties;
 
 import lombok.RequiredArgsConstructor;
@@ -106,6 +109,24 @@ public class TableRowMapper implements RowMapper<TableEntity> {
                     entity.setTableConstraints(filteredConstraints);
                 }
 
+                // tablePartition
+                JsonNode partitionNode = tableData.get("tablePartition");
+                if (partitionNode != null && !partitionNode.isNull()) {
+                    // читаем сырой DTO
+                    TablePartition rawPartition = objectMapper.treeToValue(partitionNode, TablePartition.class);
+
+                    // вычисляем intervalType на основе raw полей
+                    IntervalType intervalType = mapIntervalType(
+                            rawPartition.getPartitionKind(),
+                            rawPartition.getPartitionColumnType(),
+                            rawPartition.getInterval(),
+                            rawPartition.getColumns()
+                    );
+                    rawPartition.setIntervalType(intervalType);
+
+                    entity.setTablePartition(rawPartition);
+                }
+
             } catch (Exception e) {
                 throw new RuntimeException("Ошибка преобразования JSONB в DTO", e);
             }
@@ -137,5 +158,53 @@ public class TableRowMapper implements RowMapper<TableEntity> {
                 })
                 .collect(Collectors.toList());
         return parsedColumns;
+    }
+
+    private static IntervalType mapIntervalType(String partitionKind, String columnType, String interval, List<String> columns) {
+        if (partitionKind == null) {
+            return IntervalType.OTHER;
+        }
+
+        // нормализуем
+        String kind = partitionKind.toUpperCase(Locale.ROOT);
+        String type = columnType != null
+                ? columnType.toLowerCase(Locale.ROOT)
+                : "";
+
+        // LIST партиционирование
+        if ("L".equals(kind)) {
+            return IntervalType.COLUMN_VALUE;
+        }
+
+        // RANGE партиционирование
+        if ("R".equals(kind)) {
+            // candidate for ingestion time — пример эвристики:
+            if (columns != null && !columns.isEmpty()) {
+                String colName = columns.get(0).toLowerCase(Locale.ROOT);
+                if (colName.contains("ingest") || colName.contains("load_time") || colName.contains("event_time")) {
+                    return IntervalType.INGESTION_TIME;
+                }
+            }
+
+            // типы времени → TIME-UNIT
+            if (type.contains("timestamp")
+                    || type.equals("date")
+                    || type.startsWith("time")) {
+                return IntervalType.TIME_UNIT;
+            }
+
+            // числовые → INTEGER-RANGE
+            if (type.equals("int2")
+                    || type.equals("int4")
+                    || type.equals("int8")
+                    || type.startsWith("numeric")) {
+                return IntervalType.INTEGER_RANGE;
+            }
+
+            return IntervalType.OTHER;
+        }
+
+        // другие варианты (hash и пр.)
+        return IntervalType.OTHER;
     }
 }

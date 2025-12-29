@@ -67,6 +67,18 @@ public class TableJpaRepository {
                                         CASE WHEN a.atttypmod >= 0 THEN a.atttypmod ELSE NULL END
                                     ELSE NULL 
                                 END,
+                            'precision',
+                                CASE
+                                    WHEN a.atttypid = 1700 AND a.atttypmod > 0
+                                        THEN ((a.atttypmod - 4) >> 16)
+                                    ELSE NULL
+                                END,
+                            'scale',
+                                CASE
+                                    WHEN a.atttypid = 1700 AND a.atttypmod > 0
+                                        THEN ((a.atttypmod - 4) & 65535)
+                                    ELSE NULL
+                                END,
                             'constraint', CASE WHEN a.attnotnull = true THEN 'NOT_NULL' ELSE null END,
                             'description', dat.description
                         ) ORDER BY a.attnum
@@ -98,7 +110,45 @@ public class TableJpaRepository {
                     )
                     FROM jdata.pg_constraint_rep con
                     WHERE con.conrelid = c.oid
-                    AND con.contype IN ('p', 'u', 'f', 'c', 'x'))
+                    AND con.contype IN ('p', 'u', 'f', 'c', 'x')),
+                    'tablePartition',
+                    (
+                        SELECT jsonb_build_object(
+                            -- список колонок, участвующих в партиционировании
+                            'columns',
+                            (
+                                SELECT jsonb_agg(att.attname ORDER BY att.attnum)
+                                FROM unnest(p.paratts::smallint[]) AS attnum
+                                JOIN jdata.pg_attribute_rep att
+                                ON att.attrelid = p.parrelid
+                                AND att.attnum   = attnum
+                            ),
+                            -- raw interval из pg_partition_rule_rep
+                            'interval',
+                            (
+                                SELECT pr.parrangeevery
+                                FROM jdata.pg_partition_rule_rep pr
+                                WHERE pr.paroid = p.oid
+                                AND pr.parrangeevery IS NOT NULL
+                                ORDER BY pr.parruleord
+                                LIMIT 1
+                            ),
+                            -- raw-вид партиционирования (R/L/…)
+                            'partitionKind', p.parkind,
+                            -- тип первой колонки партиционирования (для анализа в Java)
+                            'partitionColumnType', pt.typname
+                        )
+                        FROM jdata.pg_partition_rep p
+                        LEFT JOIN jdata.pg_attribute_rep a0
+                            ON a0.attrelid = p.parrelid
+                            AND a0.attnum   = p.paratts[1]
+                        LEFT JOIN jdata.pg_type_rep pt
+                            ON pt.oid = a0.atttypid
+                        WHERE p.parrelid = c.oid
+                        AND p.parlevel = 0
+                        AND p.paristemplate = false
+                        LIMIT 1
+                    )
                 ) as table_structure
             FROM jdata.pg_class_rep c
             JOIN jdata.pg_namespace_rep n ON n.oid = c.relnamespace

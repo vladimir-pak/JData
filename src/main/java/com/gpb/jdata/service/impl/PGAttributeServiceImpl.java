@@ -58,6 +58,7 @@ public class PGAttributeServiceImpl implements PGAttributeService {
     private final static String masterQuery = """
                     SELECT attrelid, attnum, attname, atthasdef, attnotnull, atttypid, atttypmod
                     FROM pg_catalog.pg_attribute
+                    where NOT attisdropped
                     """;
     private final static String initialCopySql = """
                     COPY jdata.pg_attribute_rep (
