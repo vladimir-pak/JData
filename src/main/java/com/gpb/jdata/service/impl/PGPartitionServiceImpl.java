@@ -147,7 +147,9 @@ public class PGPartitionServiceImpl implements PGPartitionService {
                         rs.getLong("parrelid"),
                         rs.getInt("parnatts"),
                         rs.getString("parkind"),
-                        paratts  // может быть null, если parattsArray был null
+                        paratts,  // может быть null, если parattsArray был null
+                        rs.getInt("parlevel"),
+                        rs.getBoolean("paristemplate")
                 );
                 data.add(p);
             }
@@ -160,13 +162,10 @@ public class PGPartitionServiceImpl implements PGPartitionService {
      */
     @Override
     public void replicate(List<PGPartition> data, Connection connection) throws SQLException {
-        String db = connection.getMetaData().getURL();
-        db = db.substring(db.lastIndexOf("/") + 1);
-        String finalDb = db;
         List<PGPartitionReplication> replicated = data.stream()
                 .map(d -> new PGPartitionReplication(
                         d.getOid(), d.getParrelid(), d.getParnatts(),
-                        d.getParkind(), d.getParatts(), finalDb))
+                        d.getParkind(), d.getParatts(), d.getParlevel(), d.getParistemplate()))
                 .collect(Collectors.toList());
 
         if (replicated != null && !replicated.isEmpty()) {
@@ -195,7 +194,7 @@ public class PGPartitionServiceImpl implements PGPartitionService {
             if (rep == null) {
                 toAdd.add(master);
             } else {
-                if (!convertToReplication(master, rep.getDb()).equals(rep)) {
+                if (!convertToReplication(master).equals(rep)) {
                     toUpdate.add(master);
                 }
                 toDelete.remove(master.getOid());
@@ -231,10 +230,10 @@ public class PGPartitionServiceImpl implements PGPartitionService {
     /**
      * Конвертация master -> replication сущность
      */
-    private PGPartitionReplication convertToReplication(PGPartition master, String db) {
+    private PGPartitionReplication convertToReplication(PGPartition master) {
         return new PGPartitionReplication(
                 master.getOid(), master.getParrelid(), master.getParnatts(),
-                master.getParkind(), master.getParatts(), db);
+                master.getParkind(), master.getParatts(), master.getParlevel(), master.getParistemplate());
     }
 
     /**

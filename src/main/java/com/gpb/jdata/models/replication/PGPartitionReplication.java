@@ -53,11 +53,11 @@ public class PGPartitionReplication implements Serializable {
 	@Column(name = "paratts")
 	private int[] paratts;
 
-	/**
-	 * Название базы данных
-	 **/
-	@Column(name = "db")
-	private String db;
+	@Column(name = "parlevel")
+	private Integer parlevel;
+
+	@Column(name = "paristemplate")
+	private Boolean paristemplate;
 
     @Override
 	public boolean equals(Object o) {
@@ -68,13 +68,13 @@ public class PGPartitionReplication implements Serializable {
 				Objects.equals(parrelid, that.parrelid) &&
 				Objects.equals(parnatts, that.parnatts) &&
 				Objects.equals(parkind, that.parkind) &&
-				Objects.equals(db, that.db) &&
-				Arrays.equals(paratts, that.paratts);
+				Arrays.equals(paratts, that.paratts) &&
+				Objects.equals(parlevel, that.parlevel);
 	}
 	
 	@Override
 	public int hashCode() {
-		int result = Objects.hash(oid, parrelid, parnatts, parkind, db);
+		int result = Objects.hash(oid, parrelid, parnatts, parkind, parlevel);
 		result = 31 * result + Arrays.hashCode(paratts);
 		return result;
 	}
@@ -83,7 +83,7 @@ public class PGPartitionReplication implements Serializable {
     public String toString() {
         return String.format(
             "PGPartitionReplication{oid=%s, parrelid=%s"
-            + ", parnatts=%s, parkind='%s', paratts=%s, db='%s'}", 
-            oid, parrelid, parnatts, parkind, paratts, db);
+            + ", parnatts=%s, parkind='%s', paratts=%s}", 
+            oid, parrelid, parnatts, parkind, paratts);
     }
 }

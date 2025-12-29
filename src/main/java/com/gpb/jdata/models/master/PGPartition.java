@@ -37,6 +37,10 @@ public class PGPartition implements Serializable {
 
     private int[] paratts;
 
+    private Integer parlevel;
+
+    private Boolean paristemplate;
+
     @Override
     public String toString() {
         return String.format(

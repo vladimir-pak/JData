@@ -112,7 +112,7 @@ public class PGPartitionRuleServiceImpl implements PGPartitionRuleService {
         List<PGPartitionRule> data = new ArrayList<>();
         try (Statement stmt = connection.createStatement();
              ResultSet rs = stmt.executeQuery(
-                    "SELECT oid, parchildrelid, paroid FROM pg_catalog.pg_partition_rule")) {
+                "SELECT oid, parchildrelid, paroid, parrangeevery, parruleord FROM pg_catalog.pg_partition_rule")) {
             while (rs.next()) {
                 data.add(new PGPartitionRule(
                         rs.getLong("oid"),
