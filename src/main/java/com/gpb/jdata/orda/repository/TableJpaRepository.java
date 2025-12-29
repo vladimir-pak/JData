@@ -20,7 +20,7 @@ public class TableJpaRepository {
 
     private final ObjectMapper objectMapper;
     
-    public TableJpaRepository(@Qualifier("jdbcTemplate") JdbcTemplate jdbcTemplate, OrdProperties properties) {
+    public TableJpaRepository(@Qualifier("jdataDataSource") JdbcTemplate jdbcTemplate, OrdProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
         this.properties = properties;
         this.objectMapper = new ObjectMapper();

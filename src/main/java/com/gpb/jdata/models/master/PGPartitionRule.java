@@ -23,8 +23,12 @@ public class PGPartitionRule implements Serializable {
     private Long oid;
     
     private Long parchildrelid;
-    
+
     private Long paroid;
+
+    private String parrangeevery;
+
+    private Integer parruleord;
 
     @Override
     public String toString() {

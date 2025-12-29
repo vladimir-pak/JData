@@ -117,7 +117,9 @@ public class PGPartitionRuleServiceImpl implements PGPartitionRuleService {
                 data.add(new PGPartitionRule(
                         rs.getLong("oid"),
                         rs.getLong("parchildrelid"),
-                        rs.getLong("paroid")
+                        rs.getLong("paroid"),
+                        rs.getString("parrangeevery"),
+                        rs.getInt("parruleord")
                 ));
             }
         }
@@ -129,7 +131,12 @@ public class PGPartitionRuleServiceImpl implements PGPartitionRuleService {
         String db = connection.getMetaData().getURL();
         db = db.substring(db.lastIndexOf("/") + 1);
         List<PGPartitionRuleReplication> replicated = data.stream()
-                .map(r -> new PGPartitionRuleReplication(r.getOid(), r.getParchildrelid(), r.getParoid()))
+                .map(r -> new PGPartitionRuleReplication(
+                    r.getOid(), 
+                    r.getParchildrelid(), 
+                    r.getParoid(),
+                    r.getParrangeevery(),
+                    r.getParruleord()))
                 .collect(Collectors.toList());
 
         if (replicated != null && !replicated.isEmpty()) {
@@ -182,7 +189,12 @@ public class PGPartitionRuleServiceImpl implements PGPartitionRuleService {
     }
 
     private PGPartitionRuleReplication convertToReplication(PGPartitionRule rule) {
-        return new PGPartitionRuleReplication(rule.getOid(), rule.getParchildrelid(), rule.getParoid());
+        return new PGPartitionRuleReplication(
+            rule.getOid(), 
+            rule.getParchildrelid(), 
+            rule.getParoid(),
+            rule.getParrangeevery(),
+            rule.getParruleord());
     }
 
     private long getTransactionCount(Connection connection) throws SQLException {

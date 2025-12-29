@@ -29,11 +29,20 @@ public class PGPartitionRuleReplication implements Serializable {
     @Column(name = "paroid")
     private Long paroid;
 
+    @Column(name = "parrangeevery")
+    private String parrangeevery;
+
+    @Column(name = "parruleord")
+    private Integer parruleord;
+
     @Override
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         PGPartitionRuleReplication that = (PGPartitionRuleReplication) o;
-        return Objects.equals(oid, that.oid) && Objects.equals(parchildrelid, that.parchildrelid) && Objects.equals(paroid, that.paroid);
+        return Objects.equals(oid, that.oid) 
+                && Objects.equals(parchildrelid, that.parchildrelid) 
+                && Objects.equals(paroid, that.paroid)
+                && Objects.equals(parrangeevery, that.parrangeevery);
     }
 
     @Override

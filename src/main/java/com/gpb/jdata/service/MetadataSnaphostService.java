@@ -27,7 +27,7 @@ public class MetadataSnaphostService {
     private final PGPartitionRuleService pgPartitionRuleService;
     private final PGDatabaseService pgDatabaseService;
 
-    private final MetadataService metadataService;
+    // private final MetadataService metadataService;
 
     private final ClassDiffContainer diffClassContainer;
     private final NamespaceDiffContainer diffNamespaceContainer;
@@ -56,7 +56,7 @@ public class MetadataSnaphostService {
             // Ждем завершения всех задач
             CompletableFuture.allOf(f1, f2, f3, f4, f5, f6, f7).join();
 
-            metadataService.syncMetadata();
+            // metadataService.syncMetadata();
 
             log.info("=== Полная инициализация завершена ===");
         } catch (Exception e) {
@@ -87,7 +87,7 @@ public class MetadataSnaphostService {
             // Ждем завершения всех задач
             CompletableFuture.allOf(f1, f2, f3, f4, f5, f6).join();
 
-            metadataService.syncMetadata();
+            // metadataService.syncMetadata();
 
             log.info("=== Полная синхронизация завершена ===");
         } catch (Exception e) {
