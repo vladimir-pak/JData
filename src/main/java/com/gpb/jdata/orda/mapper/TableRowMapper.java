@@ -14,10 +14,11 @@ import org.springframework.stereotype.Component;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gpb.jdata.orda.enums.ConstraintType;
+import com.gpb.jdata.orda.enums.IntervalType;
+import com.gpb.jdata.orda.enums.TableTypes;
 import com.gpb.jdata.orda.enums.TypesWithDataLength;
 import com.gpb.jdata.orda.model.ColumnEntity;
-import com.gpb.jdata.orda.model.ConstraintType;
-import com.gpb.jdata.orda.model.IntervalType;
 import com.gpb.jdata.orda.model.TableConstraints;
 import com.gpb.jdata.orda.model.TableEntity;
 import com.gpb.jdata.orda.model.TablePartition;
@@ -66,7 +67,8 @@ public class TableRowMapper implements RowMapper<TableEntity> {
                 // tableType
                 JsonNode tableTypeNode = tableData.get("tableType");
                 if (tableTypeNode != null && !tableTypeNode.isNull()) {
-                    entity.setTableType(tableTypeNode.asText());
+                    String tableType = TableTypes.map(tableTypeNode.asText());
+                    entity.setTableType(tableType);
                 }
 
                 // viewDefinition

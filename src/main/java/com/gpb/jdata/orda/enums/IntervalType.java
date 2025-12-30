@@ -1,4 +1,4 @@
-package com.gpb.jdata.orda.model;
+package com.gpb.jdata.orda.enums;
 
 import com.fasterxml.jackson.annotation.JsonValue;
 

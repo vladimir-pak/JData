@@ -79,7 +79,7 @@ public class OrdaClient {
     }
 
     @Retryable(
-        retryFor = HttpServerErrorException.class,
+        retryFor = HttpServerErrorException.InternalServerError.class,
         maxAttempts = 3,
         backoff = @Backoff(delay = 1000)
     )
@@ -91,7 +91,7 @@ public class OrdaClient {
     }
 
     @Retryable(
-        retryFor = HttpServerErrorException.class,
+        retryFor = HttpServerErrorException.InternalServerError.class,
         maxAttempts = 3,
         backoff = @Backoff(delay = 1000)
     )
@@ -103,7 +103,7 @@ public class OrdaClient {
     }
 
     @Retryable(
-        retryFor = HttpServerErrorException.class,
+        retryFor = HttpServerErrorException.InternalServerError.class,
         maxAttempts = 3,
         backoff = @Backoff(delay = 1000)
     )
@@ -117,9 +117,20 @@ public class OrdaClient {
         svoiLogger.logOrdaCall(actionDescription);
     }
 
+    // Для sendPostRequest / sendPutRequest
+    @Recover
+    public <T> void recover(Throwable e, String url, T body, String actionDescription) {
+        svoiLogger.logOrdaCall(
+            "Ошибка при " + actionDescription + ": " + url + " после всех ретраев: " + e
+        );
+    }
+
+    // Для sendDeleteRequest (без body)
     @Recover
     public void recover(Throwable e, String url, String actionDescription) {
-        svoiLogger.logOrdaCall("Ошибка при " + actionDescription + ": " + url + " после всех ретраев: " + e.getMessage());
+        svoiLogger.logOrdaCall(
+            "Ошибка при " + actionDescription + ": " + url + " после всех ретраев: " + e
+        );
     }
 
     public Map<String, Object> sendGetRequest(String url, Map<String, String> params) throws Exception {

@@ -106,6 +106,7 @@ public class TableRepository {
         String sql = """
             SELECT cl."oid"
             FROM jdata.pg_class_rep cl
+            WHERE cl.relkind in ('r','v','m','f','p')
         """;
         try {
             return jdbcTemplate.queryForList(sql, Long.class);

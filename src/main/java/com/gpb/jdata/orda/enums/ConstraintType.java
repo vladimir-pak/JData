@@ -1,4 +1,4 @@
-package com.gpb.jdata.orda.model;
+package com.gpb.jdata.orda.enums;
 
 import java.util.Set;
 

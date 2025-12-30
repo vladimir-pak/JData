@@ -99,9 +99,13 @@ public class TableService {
     private void putTable(Long oid) {
         TableEntity table = tableJpaRepository.findByOid(oid);
         String url = ordaApiUrl + TABLE_URL;
-            ordaClient.sendPutRequest(url, table, 
-                    String.format("Создание или обновление таблицы %s.%s", 
-                            table.getDatabaseSchema(), table.getName()));
+        if (table == null) {
+            log.error("Таблица oid={} пустая (null)", oid);
+            return;
+        }
+        ordaClient.sendPutRequest(url, table, 
+                String.format("Создание или обновление таблицы %s.%s", 
+                        table.getDatabaseSchema(), table.getName()));
     }
 
     public void handleDeleted() {

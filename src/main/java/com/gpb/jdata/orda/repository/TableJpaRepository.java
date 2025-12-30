@@ -118,10 +118,10 @@ public class TableJpaRepository {
                             'columns',
                             (
                                 SELECT jsonb_agg(att.attname ORDER BY att.attnum)
-                                FROM unnest(p.paratts::smallint[]) AS attnum
+                                FROM unnest(p.paratts::smallint[]) AS atnm
                                 JOIN jdata.pg_attribute_rep att
                                 ON att.attrelid = p.parrelid
-                                AND att.attnum   = attnum
+                                AND att.attnum = atnm
                             ),
                             -- raw interval из pg_partition_rule_rep
                             'interval',
