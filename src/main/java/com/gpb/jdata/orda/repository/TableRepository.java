@@ -3,7 +3,6 @@ package com.gpb.jdata.orda.repository;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -11,94 +10,162 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gpb.jdata.orda.dto.TableDTO;
+import com.gpb.jdata.orda.mapper.TableRowMapper;
+import com.gpb.jdata.orda.properties.OrdProperties;
+
 @Repository
 public class TableRepository {
-
+    
+    @Qualifier("jdataDataSource")
     private final JdbcTemplate jdbcTemplate;
 
-    public TableRepository(@Qualifier("jdataDataSource") JdbcTemplate jdbcTemplate) {
+    private final OrdProperties properties;
+
+    private final ObjectMapper objectMapper;
+    
+    public TableRepository(@Qualifier("jdataDataSource") JdbcTemplate jdbcTemplate, OrdProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
+        this.properties = properties;
+        this.objectMapper = new ObjectMapper();
     }
 
-    public List<Map<String, Object>> getTableByOid(Long oid) {
+    public TableDTO findByOid(Long oid) {
         String sql = """
-            select nsp.nspname as dbschema,
-                   cl.relname as tablename,
-                   case when part.parrelid is not null then 'Partitioned'
-                        when cl.relkind = 'r' then 'Regular'
-                        when cl.relkind = 'v' then 'View'
-                        when cl.relkind = 'M' then 'View'
-                        when cl.relkind = 'f' then 'Foreign'
-                        else null end as tabletype,
-                   dt.description as table_description,
-                   attr.attname as columnname,
-                   tp.typname as dtype,
-                   case
-                        when tp.typname in ('bpchar', 'varchar') then
-                            case when attr.atttypmod < 0 then null else attr.atttypmod - 4 end
-                        when tp.typname = 'numeric' then
-                            case when attr.atttypmod < 0
-                                then null
-                                else ((attr.atttypmod - 4) >> 16) & 65535
-                            end
-                        else null
-                        end as dtlength,
-                   case
-                        when tp.typname = 'numeric' and attr.atttypmod >= 0
-                            then ((attr.atttypmod - 4) >> 16) & 65535
-                        else null
-                        end as numeric_precision,
-                        case
-                        when tp.typname = 'numeric' and attr.atttypmod >= 0
-                            then (attr.atttypmod - 4) & 65535
-                        else null
-                        end as numeric_scale,
-                   attr.attnotnull as notnull,
-                   attr.attnum as attnum,
-                   dat.description as column_description,
-                   case when con.contype = 'p' then 
-                     (select array_agg(pka.attname) 
-                      from jdata.pg_attribute_rep pka
-                      where pka.attrelid = cl."oid"
-                      and pka.attnum = any(con.conkey))  else null end as pk_constraint,
-                   case when con.contype = 'f' then 
-                     (select array_agg(fkn.nspname || '.' || fkc.relname || '.' || fka.attname)
-                      from jdata.pg_class_rep fkc
-                      join jdata.pg_namespace_rep fkn on fkc.relnamespace = fkn."oid" 
-                      join jdata.pg_attribute_rep fka on fkc."oid" = fka.attrelid
-                      where fkc."oid" = con.confrelid
-                      and fka.attnum = any(con.confkey)) else null end as fk_constraint,
-                   v.definition as view_definition
-            from jdata.pg_class_rep cl
-            join jdata.pg_namespace_rep nsp
-              on cl.relnamespace = nsp."oid"
-            left join jdata.pg_attribute_rep attr
-              on cl."oid" = attr.attrelid
-             and attr.attnum > 0
-            left join jdata.pg_constraint_rep con
-              on cl."oid" = con.conrelid
-             and cl.relnamespace = con.connamespace
-            left join jdata.pg_type_rep tp
-              on attr.atttypid = tp."oid"
-            left join jdata.pg_description_rep dt
-              on dt.objoid = cl."oid"
-             and dt.objsubid = 0
-            left join jdata.pg_description_rep dat
-              on dat.objoid = cl."oid"
-             and dat.objsubid = attr.attnum
-            left join jdata.pg_views_rep v
-              on v.schemaname = nsp.nspname
-             and v.viewname   = cl.relname
-             and cl.relkind in ('m','v')
-            left join jdata.pg_partition_rep part
-              on part.parrelid = cl."oid"
-            where cl.relkind in ('r','v','m','f','p')
-              and cl."oid" = ?
+            SELECT
+                c.oid,
+                n.nspname as schema_name,
+                c.relname as table_name,
+                obj_description(c.oid, 'pg_class') as description,
+                jsonb_build_object(
+                    'tableType',
+                    CASE 
+                        WHEN c.relkind = 'r' THEN 'REGULAR'
+                        WHEN c.relkind = 'v' THEN 'VIEW'
+                        WHEN c.relkind = 'm' THEN 'MATERIALIZED_VIEW'
+                        WHEN c.relkind = 'p' THEN 'REGULAR'
+                        ELSE 'OTHER'
+                    END,
+                    'viewDefinition',
+                    CASE 
+                        WHEN c.relkind IN ('v', 'm') THEN 
+                            (SELECT pg_get_viewdef(c.oid, true))
+                        ELSE NULL
+                    END,
+                    'columns', 
+                    (SELECT jsonb_agg(
+                        jsonb_build_object(
+                            'ordinalPosition', a.attnum,
+                            'name', a.attname,
+                            'dataType', replace(upper(split_part(format_type(a.atttypid, a.atttypmod), '(', 1)), ' ', '_'),
+                            'dataTypeDisplay', format_type(a.atttypid, a.atttypmod),
+                            'dataLength', 
+                                CASE 
+                                    WHEN a.atttypid IN (1042, 1043, 25) THEN 
+                                        CASE WHEN a.atttypmod > 0 THEN a.atttypmod - 4 ELSE NULL END
+                                    WHEN a.atttypid IN (1700) THEN 
+                                        CASE WHEN a.atttypmod > 0 THEN (a.atttypmod - 4) >> 16 ELSE NULL END
+                                    WHEN a.atttypid IN (1083, 1114, 1184, 1266) THEN 
+                                        CASE WHEN a.atttypmod > 0 THEN a.atttypmod & 65535 ELSE NULL END
+                                    WHEN a.atttypid IN (1560, 1562) THEN 
+                                        CASE WHEN a.atttypmod >= 0 THEN a.atttypmod ELSE NULL END
+                                    ELSE NULL 
+                                END,
+                            'precision',
+                                CASE
+                                    WHEN a.atttypid = 1700 AND a.atttypmod > 0
+                                        THEN ((a.atttypmod - 4) >> 16)
+                                    ELSE NULL
+                                END,
+                            'scale',
+                                CASE
+                                    WHEN a.atttypid = 1700 AND a.atttypmod > 0
+                                        THEN ((a.atttypmod - 4) & 65535)
+                                    ELSE NULL
+                                END,
+                            'constraint', CASE WHEN a.attnotnull = true THEN 'NOT_NULL' ELSE null END,
+                            'description', dat.description
+                        ) ORDER BY a.attnum
+                    )
+                    FROM jdata.pg_attribute_rep a
+                    left join jdata.pg_description_rep dat
+			              on dat.objoid = a.attrelid
+			             and dat.objsubid = a.attnum
+                    WHERE a.attrelid = c.oid 
+                    AND a.attnum > 0),
+                    'tableConstraints',
+                    (SELECT jsonb_agg(
+                        jsonb_build_object(
+                            'columns', (
+                                SELECT jsonb_agg(a.attname)
+                                FROM unnest(con.conkey) AS k(attnum)
+                                JOIN jdata.pg_attribute_rep a ON a.attrelid = con.conrelid AND a.attnum = k.attnum
+                            ),
+                            'constraintType',
+                            CASE 
+                                WHEN con.contype = 'p' THEN 'PRIMARY_KEY'
+                                WHEN con.contype = 'u' THEN 'UNIQUE'
+                                WHEN con.contype = 'f' THEN 'FOREIGN_KEY'
+                                WHEN con.contype = 'c' THEN 'CHECK'
+                                WHEN con.contype = 'x' THEN 'EXCLUSION'
+                                ELSE 'OTHER'
+                            END
+                        )
+                    )
+                    FROM jdata.pg_constraint_rep con
+                    WHERE con.conrelid = c.oid
+                    AND con.contype IN ('p', 'u', 'f', 'c', 'x')),
+                    'tablePartition',
+                    (
+                        SELECT jsonb_build_object(
+                            -- список колонок, участвующих в партиционировании
+                            'columns',
+                            (
+                                SELECT jsonb_agg(att.attname ORDER BY att.attnum)
+                                FROM unnest(p.paratts::smallint[]) AS atnm
+                                JOIN jdata.pg_attribute_rep att
+                                ON att.attrelid = p.parrelid
+                                AND att.attnum = atnm
+                            ),
+                            -- raw interval из pg_partition_rule_rep
+                            'interval',
+                            (
+                                SELECT pr.parrangeevery
+                                FROM jdata.pg_partition_rule_rep pr
+                                WHERE pr.paroid = p.oid
+                                AND pr.parrangeevery IS NOT NULL
+                                ORDER BY pr.parruleord
+                                LIMIT 1
+                            ),
+                            -- raw-вид партиционирования (R/L/…)
+                            'partitionKind', p.parkind,
+                            -- тип первой колонки партиционирования (для анализа в Java)
+                            'partitionColumnType', pt.typname
+                        )
+                        FROM jdata.pg_partition_rep p
+                        LEFT JOIN jdata.pg_attribute_rep a0
+                            ON a0.attrelid = p.parrelid
+                            AND a0.attnum   = p.paratts[1]
+                        LEFT JOIN jdata.pg_type_rep pt
+                            ON pt.oid = a0.atttypid
+                        WHERE p.parrelid = c.oid
+                        AND p.parlevel = 0
+                        AND p.paristemplate = false
+                        LIMIT 1
+                    )
+                ) as table_structure
+            FROM jdata.pg_class_rep c
+            JOIN jdata.pg_namespace_rep n ON n.oid = c.relnamespace
+            WHERE c.relkind IN ('r','v','m','f','p')
+            AND n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+            and c.oid = ?
+            ORDER BY n.nspname, c.relname;
         """;
         try {
-            return jdbcTemplate.queryForList(sql, oid);
+            return jdbcTemplate.queryForObject(sql, new TableRowMapper(properties, objectMapper), oid);
         } catch (EmptyResultDataAccessException e) {
-            return null; // или throw new EntityNotFoundException("Schema not found with oid: " + oid);
+            return null;
         }
     }
 
@@ -113,17 +180,6 @@ public class TableRepository {
         } catch (EmptyResultDataAccessException e) {
             return null; // или throw new EntityNotFoundException("Schema not found with oid: " + oid);
         }
-    } 
-
-    public List<Map<String, Object>> getTableInfoById(int tableId) {
-        String sql = """
-            select nsp.nspname || '.' || cl.relname as tablename, att.attname , att.attnum
-            from jdata.pg_class_rep cl
-            join jdata.pg_namespace_rep nsp on cl.relnamespace = nsp.oid
-            left join pg_attribute_rep att on cl."oid" = att.attrelid
-            where cl.oid = ?
-        """;
-        return jdbcTemplate.queryForList(sql, tableId);
     }
 
     public Set<String> findAllTablesBySchema(String schema) {

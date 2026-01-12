@@ -27,7 +27,6 @@ public class TypeMapper {
             Map.entry("DATETIMEOFFSET", "DATETIME"),
             Map.entry("DECIMAL", "DECIMAL"),
             Map.entry("DOUBLE PRECISION", "DOUBLE"),
-            Map.entry("DOUBLE_PRECISION", "DOUBLE"),
             Map.entry("DOUBLE", "DOUBLE"),
             Map.entry("ENUM", "ENUM"),
             Map.entry("FLOAT", "FLOAT"),
@@ -87,7 +86,7 @@ public class TypeMapper {
             Map.entry("SMALLINT", "SMALLINT"),
             Map.entry("SMALLMONEY", "NUMBER"),
             Map.entry("SMALLSERIAL", "SMALLINT"),
-            Map.entry("SQL_VARIANT", "VARBINARY"),
+            Map.entry("SQL VARIANT", "VARBINARY"),
             Map.entry("STRING", "STRING"),
             Map.entry("STRUCT", "STRUCT"),
             Map.entry("ROW", "STRUCT"),
@@ -100,9 +99,9 @@ public class TypeMapper {
             Map.entry("TIME WITHOUT TIME ZONE", "TIME"),
             Map.entry("TIMESTAMP", "TIMESTAMP"),
             Map.entry("TIMESTAMPTZ", "TIMESTAMP"),
-            Map.entry("TIMESTAMP_NTZ", "TIMESTAMP"),
-            Map.entry("TIMESTAMP_LTZ", "TIMESTAMP"),
-            Map.entry("TIMESTAMP_TZ", "TIMESTAMP"),
+            Map.entry("TIMESTAMP NTZ", "TIMESTAMP"),
+            Map.entry("TIMESTAMP LTZ", "TIMESTAMP"),
+            Map.entry("TIMESTAMP TZ", "TIMESTAMP"),
             Map.entry("TIMETZ", "TIMESTAMP"),
             Map.entry("TINYINT", "TINYINT"),
             Map.entry("UNION", "UNION"),
@@ -153,18 +152,19 @@ public class TypeMapper {
             Map.entry("HCHAPTER", "VARCHAR"),
             Map.entry("PROPVARIANT", "BINARY"),
             Map.entry("VARNUMERIC", "NUMERIC"),
-            Map.entry("WDC_INT", "INT"),
-            Map.entry("WDC_FLOAT", "FLOAT"),
-            Map.entry("WDC_STRING", "STRING"),
-            Map.entry("WDC_DATETIME", "DATETIME"),
-            Map.entry("WDC_BOOL", "BOOLEAN"),
-            Map.entry("WDC_DATE", "DATE"),
-            Map.entry("WDC_GEOMETRY", "GEOMETRY")
+            Map.entry("WDC INT", "INT"),
+            Map.entry("WDC FLOAT", "FLOAT"),
+            Map.entry("WDC STRING", "STRING"),
+            Map.entry("WDC DATETIME", "DATETIME"),
+            Map.entry("WDC BOOL", "BOOLEAN"),
+            Map.entry("WDC DATE", "DATE"),
+            Map.entry("WDC GEOMETRY", "GEOMETRY")
     );
 
     public static String mapToOrdaType(String sourceType) {
         if (sourceType != null) {
-            return _SOURCE_TYPE_TO_OM_TYPE.getOrDefault(sourceType.toUpperCase(), "UNKNOWN");
+            String formattedSourceType = sourceType.toUpperCase().replace("_", " ");
+            return _SOURCE_TYPE_TO_OM_TYPE.getOrDefault(formattedSourceType, "UNKNOWN");
         } else {
             return "UNKNOWN";
         }

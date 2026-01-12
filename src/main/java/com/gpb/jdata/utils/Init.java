@@ -7,7 +7,6 @@ import org.springframework.stereotype.Component;
 
 import com.gpb.jdata.orda.service.MetadataService;
 import com.gpb.jdata.properties.SyncProperties;
-import com.gpb.jdata.service.PGAttrdefService;
 import com.gpb.jdata.service.PGAttributeService;
 import com.gpb.jdata.service.PGClassService;
 import com.gpb.jdata.service.PGConstraintService;

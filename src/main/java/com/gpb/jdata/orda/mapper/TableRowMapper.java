@@ -14,14 +14,14 @@ import org.springframework.stereotype.Component;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gpb.jdata.orda.dto.TableDTO;
+import com.gpb.jdata.orda.dto.TablePartitionDTO;
 import com.gpb.jdata.orda.enums.ConstraintType;
 import com.gpb.jdata.orda.enums.IntervalType;
 import com.gpb.jdata.orda.enums.TableTypes;
 import com.gpb.jdata.orda.enums.TypesWithDataLength;
-import com.gpb.jdata.orda.model.ColumnEntity;
-import com.gpb.jdata.orda.model.TableConstraints;
-import com.gpb.jdata.orda.model.TableEntity;
-import com.gpb.jdata.orda.model.TablePartition;
+import com.gpb.jdata.orda.dto.ColumnDTO;
+import com.gpb.jdata.orda.dto.TableConstraintDTO;
 import com.gpb.jdata.orda.properties.OrdProperties;
 
 import lombok.RequiredArgsConstructor;
@@ -30,14 +30,14 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class TableRowMapper implements RowMapper<TableEntity> {
+public class TableRowMapper implements RowMapper<TableDTO> {
 
     private final OrdProperties ordProperties;
     private final ObjectMapper objectMapper;
 
     @Override
-    public TableEntity mapRow(@NonNull ResultSet rs, int rowNum) throws SQLException {
-        TableEntity entity = new TableEntity();
+    public TableDTO mapRow(@NonNull ResultSet rs, int rowNum) throws SQLException {
+        TableDTO entity = new TableDTO();
 
         // name / displayName
         String tableName = rs.getString("table_name");
@@ -77,26 +77,26 @@ public class TableRowMapper implements RowMapper<TableEntity> {
                     entity.setViewDefinition(viewDefNode.asText());
                 }
 
-                // columns -> List<ColumnEntity>
+                // columns -> List<ColumnDTO>
                 JsonNode columnsNode = tableData.get("columns");
                 if (columnsNode != null && columnsNode.isArray()) {
-                    List<ColumnEntity> columns = objectMapper.readValue(
+                    List<ColumnDTO> columns = objectMapper.readValue(
                             columnsNode.toString(),
-                            new TypeReference<List<ColumnEntity>>() {}
+                            new TypeReference<List<ColumnDTO>>() {}
                     );
-                    List<ColumnEntity> parsedColumns = parseColumns(columns);
+                    List<ColumnDTO> parsedColumns = parseColumns(columns);
                     entity.setColumns(parsedColumns);
                 }
 
-                // tableConstraints -> List<TableConstraints>
+                // tableConstraints -> List<TableConstraintDTO>
                 JsonNode constraintsNode = tableData.get("tableConstraints");
                 if (constraintsNode != null && constraintsNode.isArray()) {
-                    List<TableConstraints> tableConstraints = objectMapper.readValue(
+                    List<TableConstraintDTO> tableConstraints = objectMapper.readValue(
                             constraintsNode.toString(),
-                            new TypeReference<List<TableConstraints>>() {}
+                            new TypeReference<List<TableConstraintDTO>>() {}
                     );
                     // Предобработка типов constraint для таблицы. Строго в соответствии с enum ConstraintType
-                    List<TableConstraints> filteredConstraints = Optional.ofNullable(tableConstraints)
+                    List<TableConstraintDTO> filteredConstraints = Optional.ofNullable(tableConstraints)
                             .orElseGet(List::of)
                             .stream()
                             .filter(c -> {
@@ -115,7 +115,7 @@ public class TableRowMapper implements RowMapper<TableEntity> {
                 JsonNode partitionNode = tableData.get("tablePartition");
                 if (partitionNode != null && !partitionNode.isNull()) {
                     // читаем сырой DTO
-                    TablePartition rawPartition = objectMapper.treeToValue(partitionNode, TablePartition.class);
+                    TablePartitionDTO rawPartition = objectMapper.treeToValue(partitionNode, TablePartitionDTO.class);
 
                     // вычисляем intervalType на основе raw полей
                     IntervalType intervalType = mapIntervalType(
@@ -137,12 +137,12 @@ public class TableRowMapper implements RowMapper<TableEntity> {
         return entity;
     }
 
-    private List<ColumnEntity> parseColumns(List<ColumnEntity> columns) {
-        List<ColumnEntity> parsedColumns = columns.stream()
+    private List<ColumnDTO> parseColumns(List<ColumnDTO> columns) {
+        List<ColumnDTO> parsedColumns = columns.stream()
                 .map(column -> {
                     String processedDataType = TypeMapper.mapToOrdaType(column.getDataType());
 
-                    String processedDataLength = TypesWithDataLength.getProcessedDataLength(
+                    Integer processedDataLength = TypesWithDataLength.getProcessedDataLength(
                             processedDataType,
                             column.getDataLength()
                     );

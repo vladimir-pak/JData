@@ -1,4 +1,4 @@
-package com.gpb.jdata.orda.model;
+package com.gpb.jdata.orda.dto;
 
 import java.util.List;
 
@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class TablePartition {
+public class TablePartitionDTO {
 
     @JsonProperty("columns")
     private List<String> columns;
