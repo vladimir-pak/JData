@@ -45,6 +45,7 @@ public class TableRepository {
                         WHEN c.relkind = 'v' THEN 'VIEW'
                         WHEN c.relkind = 'm' THEN 'MATERIALIZED_VIEW'
                         WHEN c.relkind = 'p' THEN 'REGULAR'
+                        WHEN c.relkind = 'f' THEN 'FOREIGN'
                         ELSE 'OTHER'
                     END,
                     'viewDefinition',

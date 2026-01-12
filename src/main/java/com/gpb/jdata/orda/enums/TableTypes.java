@@ -11,6 +11,7 @@ public enum TableTypes {
     SECUREVIEW("SecureView"),
     MATERIALIZED_VIEW("MaterializedView"),
     ICEBERG("Iceberg"),
+    FOREIGN("Foreign"),
     LOCAL("Local");
 
     private final String targetType;

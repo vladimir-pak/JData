@@ -87,7 +87,7 @@ public class PGPartitionRuleServiceImpl implements PGPartitionRuleService {
 			SvoiSeverityEnum.ONE);
         try (Connection connection = databaseConfig.getConnection()) {
             long currentTransactionCount = getTransactionCount(connection);
-            long lastTransactionCount = transactions.get(PgKey.PG_PARYIYION_RULE);
+            long lastTransactionCount = transactions.get(PgKey.PG_PARTITION_RULE);
             if (currentTransactionCount == lastTransactionCount) {
                 logger.info("[pg_partition_rule] No changes detected.");
                 return;
