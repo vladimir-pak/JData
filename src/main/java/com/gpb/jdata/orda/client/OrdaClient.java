@@ -3,6 +3,8 @@ package com.gpb.jdata.orda.client;
 import java.net.URI;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -41,6 +43,8 @@ public class OrdaClient {
     private static final String TABLE_URL = "/tables";
 
     private final KeycloakAuthService keycloak;
+
+    private final ConcurrentHashMap<String, String> fqnToIdCache = new ConcurrentHashMap<>();
 
     public boolean isProjectEntity(String fqn) {
         String url = ordaApiUrl + TABLE_URL + "/name/" + fqn;
@@ -157,6 +161,32 @@ public class OrdaClient {
             log.error("Ошибка при GET запросе: {}. {}", url, e.getMessage());
             throw e;
         }
+    }
+
+    @Retryable(
+        retryFor = HttpServerErrorException.InternalServerError.class,
+        maxAttempts = 3,
+        backoff = @Backoff(delay = 1000)
+    )
+    public Optional<String> resolveTableIdByFqn(String baseUrl, String tableFqn) {
+        return Optional.ofNullable(fqnToIdCache.computeIfAbsent(tableFqn, fqn -> {
+            try {
+                // GET /api/v1/tables/name/{fqn}
+                String url = baseUrl + "/tables/name/" + fqn;
+                Map<String, Object> resp = sendGetRequest(url, null);
+
+                Object id = resp.get("id");
+                if (id == null) {
+                    log.warn("No 'id' in response for fqn={}", fqn);
+                    return null;
+                }
+                return String.valueOf(id);
+
+            } catch (Exception e) {
+                log.error("Failed to resolve id for fqn={}: {}", fqn, e.getMessage());
+                return null;
+            }
+        }));
     }
     
     private HttpHeaders createHeaders() {

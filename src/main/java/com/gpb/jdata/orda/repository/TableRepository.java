@@ -12,7 +12,9 @@ import org.springframework.stereotype.Repository;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gpb.jdata.orda.dto.TableDTO;
+import com.gpb.jdata.orda.dto.ViewDTO;
 import com.gpb.jdata.orda.mapper.TableRowMapper;
+import com.gpb.jdata.orda.mapper.ViewRowMapper;
 import com.gpb.jdata.orda.properties.OrdProperties;
 
 @Repository
@@ -51,7 +53,10 @@ public class TableRepository {
                     'viewDefinition',
                     CASE 
                         WHEN c.relkind IN ('v', 'm') THEN 
-                            (SELECT pg_get_viewdef(c.oid, true))
+                            (SELECT v.definition
+                             FROM jdata.pg_views_rep v
+                             WHERE v.schemaname = n.nspname
+                             AND v.viewname   = c.relname)
                         ELSE NULL
                     END,
                     'columns', 
@@ -195,6 +200,24 @@ public class TableRepository {
             return new HashSet<>(names);
         } catch (EmptyResultDataAccessException e) {
             return Collections.emptySet();
+        }
+    }
+
+    public ViewDTO findViewByOid(Long oid) {
+        String sql = """
+                select v.schemaname, v.viewname, v.definition
+                from jdata.pg_class_rep cl
+                join jdata.pg_namespace_rep nsp
+                    on cl.relnamespace = nsp.oid
+                join jdata.pg_views_rep v
+                    on v.schemaname = nsp.nspname
+                    and v.viewname = cl.relname
+                where cl.oid = ?;
+                """;
+        try {
+            return jdbcTemplate.queryForObject(sql, new ViewRowMapper(), oid);
+        } catch (EmptyResultDataAccessException e) {
+            return null;
         }
     }
 }

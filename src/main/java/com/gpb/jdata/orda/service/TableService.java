@@ -18,10 +18,12 @@ import org.springframework.web.client.HttpClientErrorException;
 
 import com.gpb.jdata.orda.client.OrdaClient;
 import com.gpb.jdata.orda.dto.TableDTO;
+import com.gpb.jdata.orda.dto.ViewDTO;
 import com.gpb.jdata.orda.properties.OrdProperties;
 import com.gpb.jdata.orda.repository.SchemaRepository;
 import com.gpb.jdata.orda.repository.TableRepository;
 import com.gpb.jdata.utils.diff.ClassDiffContainer;
+import com.gpb.jdata.utils.diff.ViewDiffContainer;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,11 +47,13 @@ public class TableService {
     private final OrdProperties ordProperties;
 
     private final ClassDiffContainer diffContainer;
+    private final ViewDiffContainer viewDiffContainer;
 
     public void syncTables() {
         ExecutorService executor = Executors.newFixedThreadPool(maxConnections);
 
         try {
+            viewDiffContainer.clear();
             List<Callable<Void>> tasks = diffContainer.getUpdated().stream()
                 .<Callable<Void>>map(oid -> () -> {
                     try {
@@ -71,11 +75,21 @@ public class TableService {
 
     public void putTable(Long oid) {
         TableDTO table = tableRepository.findByOid(oid);
-        String url = ordaApiUrl + TABLE_URL;
+        
         if (table == null) {
             log.error("Таблица oid={} пустая (null)", oid);
             return;
         }
+
+        if (table.getTableType() == "View") {
+            ViewDTO view = new ViewDTO();
+            view.setViewName(table.getName());
+            view.setSchemaName(table.getDatabaseSchema());
+            view.setViewDefinition(table.getViewDefinition());
+            viewDiffContainer.addUpdated(view);
+        }
+
+        String url = ordaApiUrl + TABLE_URL;
         
         ordaClient.sendPutRequest(url, table, 
                 String.format("Создание или обновление таблицы %s.%s", 

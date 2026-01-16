@@ -17,6 +17,7 @@ public class MetadataService {
     private final SchemaService schemaService;
     private final TableService tableService;
     private final DatabaseService databaseService;
+    private final ViewService viewService;
     private final ClassDiffContainer classDiffContainer;
     private final NamespaceDiffContainer namespaceDiffContainer;
 
@@ -36,6 +37,8 @@ public class MetadataService {
             List<Long> tables = tableRepository.findAll();
             classDiffContainer.addAllUpdated(tables);
 
+            viewService.handleViewLineage();
+
             syncMetadata();
         } catch (Exception e) {
             logger.error("Ошибка при инициализации метаданных: {}", e.getMessage(), e);
@@ -48,6 +51,7 @@ public class MetadataService {
             syncSchemas();
             syncTables();
             handleDeletions();
+            viewService.handleViewLineage();
             logger.info("Синхронизация метаданных завершена успешно.");
         } catch (Exception e) {
             logger.error("Ошибка при синхронизации метаданных: {}", e.getMessage(), e);
@@ -66,6 +70,7 @@ public class MetadataService {
     public void syncTables() {
         try {
             tableService.syncTables();
+            viewService.handleViewLineage();
             logger.info("Синхронизация таблиц завершена успешно.");
         } catch (Exception e) {
             logger.error("Ошибка при синхронизации таблиц: {}", e.getMessage(), e);
