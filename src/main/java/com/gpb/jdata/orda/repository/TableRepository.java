@@ -39,14 +39,15 @@ public class TableRepository {
                 c.oid,
                 n.nspname as schema_name,
                 c.relname as table_name,
-                obj_description(c.oid, 'pg_class') as description,
+                d.description as description,
                 jsonb_build_object(
                     'tableType',
                     CASE 
+                        WHEN par."oid" is not null  THEN 'PARTITIONED'
                         WHEN c.relkind = 'r' THEN 'REGULAR'
                         WHEN c.relkind = 'v' THEN 'VIEW'
                         WHEN c.relkind = 'm' THEN 'MATERIALIZED_VIEW'
-                        WHEN c.relkind = 'p' THEN 'REGULAR'
+                        WHEN c.relkind = 'p' THEN 'PARTITIONED'
                         WHEN c.relkind = 'f' THEN 'FOREIGN'
                         ELSE 'OTHER'
                     END,
@@ -163,6 +164,11 @@ public class TableRepository {
                 ) as table_structure
             FROM jdata.pg_class_rep c
             JOIN jdata.pg_namespace_rep n ON n.oid = c.relnamespace
+            LEFT JOIN jdata.pg_description_rep d ON d.objoid = c.oid
+                AND d.objsubid = 0
+            LEFT JOIN jdata.pg_partition_rep par ON c."oid" = par.parrelid
+            	AND par.parlevel = 0
+            	AND par.paristemplate = false
             WHERE c.relkind IN ('r','v','m','f','p')
             AND n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
             and c.oid = ?

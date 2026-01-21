@@ -125,6 +125,8 @@ public class TableRowMapper implements RowMapper<TableDTO> {
                             rawPartition.getColumns()
                     );
                     rawPartition.setIntervalType(intervalType);
+                    rawPartition.setPartitionColumnType(null);
+                    rawPartition.setPartitionKind(null);
 
                     entity.setTablePartition(rawPartition);
                 }
@@ -180,14 +182,6 @@ public class TableRowMapper implements RowMapper<TableDTO> {
 
         // RANGE партиционирование
         if ("R".equals(kind)) {
-            // candidate for ingestion time — пример эвристики:
-            if (columns != null && !columns.isEmpty()) {
-                String colName = columns.get(0).toLowerCase(Locale.ROOT);
-                if (colName.contains("ingest") || colName.contains("load_time") || colName.contains("event_time")) {
-                    return IntervalType.INGESTION_TIME;
-                }
-            }
-
             // типы времени → TIME-UNIT
             if (type.contains("timestamp")
                     || type.equals("date")
@@ -203,7 +197,7 @@ public class TableRowMapper implements RowMapper<TableDTO> {
                 return IntervalType.INTEGER_RANGE;
             }
 
-            return IntervalType.OTHER;
+            return IntervalType.TIME_UNIT;
         }
 
         // другие варианты (hash и пр.)

@@ -12,6 +12,7 @@ public enum TableTypes {
     MATERIALIZED_VIEW("MaterializedView"),
     ICEBERG("Iceberg"),
     FOREIGN("Foreign"),
+    PARTITIONED("Partitioned"),
     LOCAL("Local");
 
     private final String targetType;

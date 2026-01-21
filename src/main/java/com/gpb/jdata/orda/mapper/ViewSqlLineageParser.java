@@ -7,6 +7,9 @@ import net.sf.jsqlparser.util.TablesNamesFinder;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
+import org.springframework.stereotype.Component;
+
+@Component
 public final class ViewSqlLineageParser {
 
 	public record TableRef(String schema, String name) {}

@@ -81,12 +81,20 @@ public class TableService {
             return;
         }
 
+        log.debug("viewDefinition: {}", table.getViewDefinition());
+        table.setViewDefinition(null);
+
         if (table.getTableType() == "View") {
             ViewDTO view = new ViewDTO();
             view.setViewName(table.getName());
             view.setSchemaName(table.getDatabaseSchema());
             view.setViewDefinition(table.getViewDefinition());
             viewDiffContainer.addUpdated(view);
+
+            String fqn = String.format("%s.%s", 
+                table.getDatabaseSchema(), table.getName());
+            String deleteUrl = ordaApiUrl + TABLE_URL + "/name/" + fqn;
+            ordaClient.sendDeleteRequest(deleteUrl, "Удаление таблицы view " + fqn);
         }
 
         String url = ordaApiUrl + TABLE_URL;

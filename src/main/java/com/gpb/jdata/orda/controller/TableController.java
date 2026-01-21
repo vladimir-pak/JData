@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.orda.service.TableService;
+import com.gpb.jdata.orda.service.ViewService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -23,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 public class TableController {
     
     private final TableService tableService;
+    private final ViewService viewService;
     private final SvoiCustomLogger logger;
     
     @PostMapping("/sync")
@@ -35,11 +37,21 @@ public class TableController {
 
     @PutMapping("/sync/{oid}")
     @Operation(summary = "Запуск синхронизации таблицы по oid")
-    public ResponseEntity<Void> syncTables(HttpServletRequest httpServletRequest,
+    public ResponseEntity<Void> syncTable(HttpServletRequest httpServletRequest,
             @PathVariable Long oid
     ) {
         logger.logApiCall(httpServletRequest, "SyncTable");
         tableService.putTable(oid);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/sync/view/{oid}")
+    @Operation(summary = "Запуск синхронизации представления по oid")
+    public ResponseEntity<Void> syncView(HttpServletRequest httpServletRequest,
+            @PathVariable Long oid
+    ) {
+        logger.logApiCall(httpServletRequest, "SyncView");
+        viewService.putLineageByOid(oid);
         return ResponseEntity.ok().build();
     }
 

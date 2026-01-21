@@ -29,7 +29,7 @@ public class ViewLineageRequestBuilder {
         ViewDTO viewDTO
     ) {
 
-        String viewFqn = String.format("%s.%s.%s", prefixFqn, viewDTO.getSchemaName(), viewDTO.getViewName());
+        String viewFqn = String.format("%s.%s", viewDTO.getSchemaName(), viewDTO.getViewName());
 
         String viewId = ordaClient.resolveTableIdByFqn(omBaseUrl, viewFqn)
             .orElse(null);

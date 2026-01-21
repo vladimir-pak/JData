@@ -19,7 +19,6 @@ import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -45,6 +44,7 @@ public class OrdaClient {
     private final KeycloakAuthService keycloak;
 
     private final ConcurrentHashMap<String, String> fqnToIdCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Map<String, String>> viewBody = new ConcurrentHashMap<>();
 
     public boolean isProjectEntity(String fqn) {
         String url = ordaApiUrl + TABLE_URL + "/name/" + fqn;
