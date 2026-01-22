@@ -169,8 +169,10 @@ public class TableRepository {
             LEFT JOIN jdata.pg_partition_rep par ON c."oid" = par.parrelid
             	AND par.parlevel = 0
             	AND par.paristemplate = false
+            LEFT JOIN jdata.pg_partition_rule_rep pr on c."oid" = pr.parchildrelid
             WHERE c.relkind IN ('r','v','m','f','p')
             AND n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+            AND pr."oid" is null -- не партиции
             and c.oid = ?
             ORDER BY n.nspname, c.relname;
         """;
