@@ -171,7 +171,7 @@ public class TableRepository {
             	AND par.paristemplate = false
             LEFT JOIN jdata.pg_partition_rule_rep pr on c."oid" = pr.parchildrelid
             WHERE c.relkind IN ('r','v','m','f','p')
-            AND n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+            AND n.nspname != 'pg_toast'
             AND pr."oid" is null -- не партиции
             and c.oid = ?
             ORDER BY n.nspname, c.relname;
@@ -185,9 +185,14 @@ public class TableRepository {
 
     public List<Long> findAll() {
         String sql = """
-            SELECT cl."oid"
+            SELECT cl.oid
             FROM jdata.pg_class_rep cl
+            JOIN jdata.pg_namespace_rep n ON n.oid = cl.relnamespace
+            LEFT JOIN jdata.pg_partition_rule_rep ppr
+			ON ppr.parchildrelid = cl.oid
             WHERE cl.relkind in ('r','v','m','f','p')
+            AND n.nspname != 'pg_toast'
+            AND ppr.oid is null -- не партиции
         """;
         try {
             return jdbcTemplate.queryForList(sql, Long.class);

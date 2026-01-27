@@ -149,6 +149,10 @@ public class TableRowMapper implements RowMapper<TableDTO> {
                             column.getDataLength()
                     );
 
+                    if (processedDataType == "ARRAY") {
+                        column.setArrayDataType("UNKNOWN");
+                    }
+
                     String constraint = column.getConstraint();
                     if ("NULLABLE".equalsIgnoreCase(constraint)) {
                         constraint = null;

@@ -81,13 +81,10 @@ public class TableService {
             return;
         }
 
-        log.debug("viewDefinition: {}", table.getViewDefinition());
-        table.setViewDefinition(null);
-
         if (table.getTableType() == "View") {
             ViewDTO view = new ViewDTO();
             view.setViewName(table.getName());
-            view.setSchemaName(table.getDatabaseSchema());
+            view.setSchemaName(lastTokenAfterDot(table.getDatabaseSchema())); // передаем схему без service.db
             view.setViewDefinition(table.getViewDefinition());
             viewDiffContainer.addUpdated(view);
 
@@ -199,5 +196,11 @@ public class TableService {
         for (String schema : repSchemas) {
             handleDeletedBySchema(schema);
         }
+    }
+
+    private static String lastTokenAfterDot(String s) {
+        if (s == null) return null;
+        int idx = s.lastIndexOf('.');
+        return (idx >= 0 && idx < s.length() - 1) ? s.substring(idx + 1) : s;
     }
 }

@@ -69,6 +69,8 @@ public class TypeMapper {
             Map.entry("MEDIUMINT", "INT"),
             Map.entry("MEDIUMTEXT", "MEDIUMTEXT"),
             Map.entry("MONEY", "NUMBER"),
+            Map.entry("NAME", "STRING"),
+            Map.entry("NAME[]", "ARRAY"),
             Map.entry("NCHAR", "CHAR"),
             Map.entry("NTEXT", "NTEXT"),
             Map.entry("NULL", "NULL"),

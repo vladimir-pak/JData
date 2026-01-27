@@ -165,7 +165,7 @@ public class OrdaClient {
 
     @Retryable(
         retryFor = HttpServerErrorException.InternalServerError.class,
-        maxAttempts = 3,
+        maxAttempts = 2,
         backoff = @Backoff(delay = 1000)
     )
     public Optional<String> resolveTableIdByFqn(String baseUrl, String tableFqn) {
