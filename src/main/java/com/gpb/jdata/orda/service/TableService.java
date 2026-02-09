@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -81,6 +82,14 @@ public class TableService {
             return;
         }
 
+        String fqn = String.format("%s.%s", 
+                table.getDatabaseSchema(), table.getName());
+
+        // Если таблица - проектная сушность, то не меняем метаданные по ней
+        if (ordaClient.isProjectEntity(fqn)) {
+            return;
+        }
+
         if (table.getTableType() == "View") {
             ViewDTO view = new ViewDTO();
             view.setViewName(table.getName());
@@ -88,8 +97,6 @@ public class TableService {
             view.setViewDefinition(table.getViewDefinition());
             viewDiffContainer.addUpdated(view);
 
-            String fqn = String.format("%s.%s", 
-                table.getDatabaseSchema(), table.getName());
             String deleteUrl = ordaApiUrl + TABLE_URL + "/name/" + fqn;
             ordaClient.sendDeleteRequest(deleteUrl, "Удаление таблицы view " + fqn);
         }
