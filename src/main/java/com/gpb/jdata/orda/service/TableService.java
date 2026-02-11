@@ -85,8 +85,19 @@ public class TableService {
         String fqn = String.format("%s.%s", 
                 table.getDatabaseSchema(), table.getName());
 
-        // Если таблица - проектная сушность, то не меняем метаданные по ней
-        if (ordaClient.isProjectEntity(fqn)) {
+        try {
+            // Если таблица - проектная сушность, то не меняем метаданные по ней
+            if (ordaClient.isProjectEntity(fqn)) {
+                return;
+            }
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() != HttpStatus.NOT_FOUND) {
+                log.error("Ошибка при проверке таблицы в ОРДе {}: {}", fqn, e.getMessage());
+                return;
+            }
+            // Если таблица не найдена (404) ответ, то делаем PUT запрос
+        } catch (Exception e) {
+            log.error("Ошибка при проверке таблицы в ОРДе {}: {}", fqn, e.getMessage());
             return;
         }
 

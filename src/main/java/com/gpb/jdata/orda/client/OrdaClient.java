@@ -2,6 +2,7 @@ package com.gpb.jdata.orda.client;
 
 import java.net.URI;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,6 +20,7 @@ import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -44,9 +46,8 @@ public class OrdaClient {
     private final KeycloakAuthService keycloak;
 
     private final ConcurrentHashMap<String, String> fqnToIdCache = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Map<String, String>> viewBody = new ConcurrentHashMap<>();
 
-    public boolean isProjectEntity(String fqn) {
+    public boolean isProjectEntity(String fqn) throws HttpClientErrorException, Exception {
         String url = ordaApiUrl + TABLE_URL + "/name/" + fqn;
         try {
             HttpHeaders headers = createHeaders();
@@ -58,11 +59,19 @@ public class OrdaClient {
                 Map.class
             );
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return Boolean.TRUE.equals(response.getBody().get("isProjectEntity"));
+                Object value = response.getBody().get("isProjectEntity");
+                if (value instanceof Boolean) {
+                    return (Boolean) value;
+                }
+                if (value instanceof String) {
+                    return Boolean.parseBoolean((String) value);
+                }
             }
+        } catch (HttpClientErrorException e) {
+            throw e;
         } catch (Exception e) {
             System.err.println("Ошибка при проверке isProjectEntity для таблицы: " + fqn + ". " + e.getMessage());
-            return true;
+            throw e;
         }
         return false;
     }
