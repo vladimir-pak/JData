@@ -9,6 +9,7 @@ import com.gpb.jdata.orda.client.OrdaClient;
 import com.gpb.jdata.orda.dto.lineage.LineageSource;
 import com.gpb.jdata.orda.dto.ViewDTO;
 import com.gpb.jdata.orda.dto.lineage.AddLineageRequest;
+import com.gpb.jdata.orda.dto.lineage.ColumnsLineage;
 import com.gpb.jdata.orda.dto.lineage.EntityReference;
 import com.gpb.jdata.orda.dto.lineage.LineageDetails;
 import com.gpb.jdata.orda.dto.lineage.LineageEdge;
@@ -28,13 +29,22 @@ public class ViewLineageRequestBuilder {
             List.of("pg_catalog", "information_schema");
 
     public List<AddLineageRequest> buildEdgesForView(
-        String omBaseUrl,
-        String prefixFqn, // service.db
-        ViewDTO viewDTO
+            String omBaseUrl,
+            String prefixFqn, // service.db
+            ViewDTO viewDTO
     ) {
-        String viewFqn = String.format("%s.%s.%s", prefixFqn, viewDTO.getSchemaName(), viewDTO.getViewName());
+        String viewSchema = normalizeIdent(viewDTO.getSchemaName());
+        String viewName = normalizeIdent(viewDTO.getViewName());
+        String sql = viewDTO.getViewDefinition();
 
-        // Кэш на один вызов, чтобы не дергать resolveTableIdByFqn много раз
+        if (viewSchema == null || viewSchema.isBlank() || viewName == null || viewName.isBlank()) {
+            log.warn("Некорректный ViewDTO: schemaName='{}', viewName='{}'", viewDTO.getSchemaName(), viewDTO.getViewName());
+            return List.of();
+        }
+
+        String viewFqn = String.format("%s.%s.%s", prefixFqn, viewSchema, viewName);
+
+        // Кэш на один вызов: tableFqn -> Optional<tableId>
         Map<String, Optional<String>> idCache = new HashMap<>();
 
         String viewId = resolveIdCached(omBaseUrl, viewFqn, idCache).orElse(null);
@@ -43,29 +53,106 @@ public class ViewLineageRequestBuilder {
             return List.of();
         }
 
-        Set<ViewSqlLineageParser.TableRef> upstream =
-                parser.extractUpstreamTables(viewDTO.getViewDefinition());
+        if (sql == null || sql.isBlank()) {
+            log.warn("View {}: viewDefinition пустой, пропускаем lineage", viewFqn);
+            return List.of();
+        }
 
-        List<AddLineageRequest> out = new ArrayList<>(upstream.size());
+        ViewSqlLineageParser.ParsedLineage parsed = parser.parse(sql);
 
-        for (var t : upstream) {
+        if (parsed.upstreamTables().isEmpty()) {
+            return List.of();
+        }
 
-            Optional<String> upstreamIdOpt = resolveUpstreamId(
+        // alias/name(lower) -> resolved upstream tableFqn
+        Map<String, String> aliasToResolvedFqn = new HashMap<>();
+
+        // resolved upstream tableFqn -> index columnName(lower) -> columnFqn
+        // здесь columnFqn строим best-effort: tableFqn + "." + col
+        Map<String, Map<String, String>> upstreamColumnIndexByTableFqn = new HashMap<>();
+
+        // 1) Резолвим alias/name -> upstream tableFqn
+        for (var e : parsed.aliasToTable().entrySet()) {
+            String aliasKey = normKey(e.getKey());
+            if (aliasKey == null) continue;
+
+            Optional<String> upstreamFqnOpt = resolveUpstreamTableFqn(
                     omBaseUrl,
                     prefixFqn,
-                    viewDTO.getSchemaName(),
-                    t,
+                    viewSchema,
+                    e.getValue(),
                     idCache
             );
 
-            if (upstreamIdOpt.isEmpty()) {
-                // upstream таблица может быть не загружена — пропускаем
-                String debugName = (t.schema() == null ? "" : (t.schema() + ".")) + t.name();
+            if (upstreamFqnOpt.isEmpty()) {
+                continue;
+            }
+
+            String upstreamFqn = upstreamFqnOpt.get();
+            aliasToResolvedFqn.put(aliasKey, upstreamFqn);
+            upstreamColumnIndexByTableFqn.put(
+                    upstreamFqn,
+                    Map.of() // metadata таблиц здесь нет, поэтому fallback будет через tableFqn + "." + column
+            );
+        }
+
+        // 2) Строим общий список columnsLineage
+        List<ColumnsLineage> columnsLineage = buildColumnsLineage(
+                viewFqn,
+                parsed,
+                aliasToResolvedFqn,
+                upstreamColumnIndexByTableFqn,
+                omBaseUrl,
+                prefixFqn,
+                viewSchema,
+                idCache
+        );
+
+        // 3) Создаём table-level edges, на каждом edge оставляем только относящиеся к конкретной upstream table columnsLineage
+        List<AddLineageRequest> out = new ArrayList<>();
+
+        for (var upstreamRef : parsed.upstreamTables()) {
+            Optional<String> upstreamFqnOpt = resolveUpstreamTableFqn(
+                    omBaseUrl,
+                    prefixFqn,
+                    viewSchema,
+                    upstreamRef,
+                    idCache
+            );
+
+            if (upstreamFqnOpt.isEmpty()) {
+                String debugName = (upstreamRef.schema() == null ? "" : (upstreamRef.schema() + ".")) + upstreamRef.name();
                 log.warn("View upstream {} не найден в OMD (schemaView/pg_catalog/information_schema)", debugName);
                 continue;
             }
 
-            String upstreamId = upstreamIdOpt.get();
+            String upstreamFqn = upstreamFqnOpt.get();
+
+            List<ColumnsLineage> filtered = columnsLineage.stream()
+                    .map(cl -> {
+                        List<String> from = Optional.ofNullable(cl.getFromColumns())
+                                .orElse(List.of())
+                                .stream()
+                                .filter(fc -> fc != null && fc.startsWith(upstreamFqn + "."))
+                                .toList();
+
+                        if (from.isEmpty()) {
+                            return null;
+                        }
+
+                        return ColumnsLineage.builder()
+                                .toColumn(cl.getToColumn())
+                                .fromColumns(from)
+                                .build();
+                    })
+                    .filter(Objects::nonNull)
+                    .toList();
+
+            String upstreamId = resolveIdCached(omBaseUrl, upstreamFqn, idCache).orElse(null);
+            if (upstreamId == null) {
+                log.warn("Upstream {} отсутствует в OMD", upstreamFqn);
+                continue;
+            }
 
             out.add(AddLineageRequest.builder()
                     .edge(LineageEdge.builder()
@@ -73,7 +160,8 @@ public class ViewLineageRequestBuilder {
                             .toEntity(EntityReference.builder().type("table").id(viewId).build())
                             .lineageDetails(LineageDetails.builder()
                                     .source(LineageSource.ViewLineage)
-                                    .sqlQuery(viewDTO.getViewDefinition())
+                                    .sqlQuery(sql)
+                                    .columnsLineage(filtered.isEmpty() ? null : filtered)
                                     .build())
                             .build())
                     .build());
@@ -82,30 +170,136 @@ public class ViewLineageRequestBuilder {
         return out;
     }
 
-    private Optional<String> resolveUpstreamId(
+    private List<ColumnsLineage> buildColumnsLineage(
+            String viewFqn,
+            ViewSqlLineageParser.ParsedLineage parsed,
+            Map<String, String> aliasToResolvedTableFqn, // alias(lower)->tableFqn
+            Map<String, Map<String, String>> upstreamColsByTableFqn, // tableFqn -> (col(lower)->colFqn)
+            String omBaseUrl,
+            String prefixFqn,
+            String viewSchema,
+            Map<String, Optional<String>> idCache
+    ) {
+        List<ColumnsLineage> out = new ArrayList<>();
+
+        for (var mapping : parsed.columnMappings()) {
+            String toName = normalizeIdent(mapping.toColumn());
+            if (toName == null || toName.isBlank()) {
+                continue;
+            }
+
+            // Так как metadata view колонок в этом сервисе нет, строим toColumn best-effort
+            String toFqn = viewFqn + "." + toName;
+
+            List<String> fromFqns = new ArrayList<>();
+
+            for (var cr : mapping.from()) {
+                String holderRaw = normalizeIdent(cr.tableAliasOrName()); // alias / table name / null
+                String colName = normalizeIdent(cr.column());
+
+                if (colName == null || colName.isBlank()) {
+                    continue;
+                }
+
+                String upstreamTableFqn = null;
+
+                if (holderRaw != null && !holderRaw.isBlank()) {
+                    // 1) пробуем как alias/name
+                    upstreamTableFqn = aliasToResolvedTableFqn.get(holderRaw.toLowerCase(Locale.ROOT));
+
+                    // 2) если не нашли — пробуем трактовать как имя таблицы без схемы
+                    if (upstreamTableFqn == null) {
+                        upstreamTableFqn = resolveUpstreamTableFqn(
+                                omBaseUrl,
+                                prefixFqn,
+                                viewSchema,
+                                new ViewSqlLineageParser.TableRef(null, holderRaw),
+                                idCache
+                        ).orElse(null);
+                    }
+                } else {
+                    // table не указан у колонки
+                    // если upstream таблица ровно одна — можем однозначно сопоставить
+                    if (parsed.upstreamTables().size() == 1) {
+                        var only = parsed.upstreamTables().iterator().next();
+                        upstreamTableFqn = resolveUpstreamTableFqn(
+                                omBaseUrl,
+                                prefixFqn,
+                                viewSchema,
+                                only,
+                                idCache
+                        ).orElse(null);
+                    }
+                }
+
+                if (upstreamTableFqn == null) {
+                    continue;
+                }
+
+                Map<String, String> upstreamCols = upstreamColsByTableFqn.getOrDefault(upstreamTableFqn, Map.of());
+
+                String fromFqn = upstreamCols.get(colName.toLowerCase(Locale.ROOT));
+                if (fromFqn == null) {
+                    fromFqn = upstreamTableFqn + "." + colName;
+                }
+
+                fromFqns.add(fromFqn);
+            }
+
+            if (!fromFqns.isEmpty()) {
+                List<String> uniq = new ArrayList<>(new LinkedHashSet<>(fromFqns));
+
+                out.add(ColumnsLineage.builder()
+                        .toColumn(toFqn)
+                        .fromColumns(uniq)
+                        .build());
+            }
+        }
+
+        return out;
+    }
+
+    /**
+     * Возвращает FQN upstream таблицы, которая реально существует в OMD.
+     * Optional содержит именно table FQN, а не id.
+     */
+    private Optional<String> resolveUpstreamTableFqn(
             String omBaseUrl,
             String prefixFqn,          // service.db
             String viewSchema,
             ViewSqlLineageParser.TableRef ref,
             Map<String, Optional<String>> idCache
     ) {
-        String tableName = ref.name();
+        String tableName = normalizeIdent(ref.name());
+        String schema = normalizeIdent(ref.schema());
 
-        // 1) если схема указана в SQL — используем её
-        if (ref.schema() != null && !ref.schema().isBlank()) {
-            String fqn = String.format("%s.%s.%s", prefixFqn, ref.schema(), tableName);
-            return resolveIdCached(omBaseUrl, fqn, idCache);
+        if (tableName == null || tableName.isBlank()) {
+            return Optional.empty();
         }
 
-        // 2) иначе пробуем по порядку: schemaView → pg_catalog → information_schema
+        // 1) Если schema указана в SQL — используем её
+        if (schema != null && !schema.isBlank()) {
+            String fqn = String.format("%s.%s.%s", prefixFqn, schema, tableName);
+            return resolveIdCached(omBaseUrl, fqn, idCache).isPresent()
+                    ? Optional.of(fqn)
+                    : Optional.empty();
+        }
+
+        // 2) Иначе пробуем: schema view -> pg_catalog -> information_schema
         List<String> candidates = new ArrayList<>(1 + DEFAULT_SCHEMA_FALLBACK.size());
         candidates.add(viewSchema);
         candidates.addAll(DEFAULT_SCHEMA_FALLBACK);
 
         for (String schemaCandidate : candidates) {
-            String fqn = String.format("%s.%s.%s", prefixFqn, schemaCandidate, tableName);
-            Optional<String> id = resolveIdCached(omBaseUrl, fqn, idCache);
-            if (id.isPresent()) return id;
+            String normalizedSchema = normalizeIdent(schemaCandidate);
+            if (normalizedSchema == null || normalizedSchema.isBlank()) {
+                continue;
+            }
+
+            String fqn = String.format("%s.%s.%s", prefixFqn, normalizedSchema, tableName);
+            if (resolveIdCached(omBaseUrl, fqn, idCache).isPresent()) {
+                return Optional.of(fqn);
+            }
         }
 
         return Optional.empty();
@@ -119,5 +313,25 @@ public class ViewLineageRequestBuilder {
         return idCache.computeIfAbsent(fqn, key ->
                 ordaClient.resolveTableIdByFqn(omBaseUrl, key)
         );
+    }
+
+    /**
+     * trim + снять двойные кавычки
+     */
+    private static String normalizeIdent(String s) {
+        if (s == null) return null;
+        s = s.trim();
+        if (s.length() >= 2 && s.startsWith("\"") && s.endsWith("\"")) {
+            s = s.substring(1, s.length() - 1);
+        }
+        return s;
+    }
+
+    /**
+     * Нормализованный ключ для alias/name map
+     */
+    private static String normKey(String s) {
+        String n = normalizeIdent(s);
+        return n == null ? null : n.toLowerCase(Locale.ROOT);
     }
 }
