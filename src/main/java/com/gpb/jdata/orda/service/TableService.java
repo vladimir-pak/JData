@@ -108,8 +108,9 @@ public class TableService {
             view.setViewDefinition(table.getViewDefinition());
             viewDiffContainer.addUpdated(view);
 
-            String deleteUrl = ordaApiUrl + TABLE_URL + "/name/" + fqn;
-            ordaClient.sendDeleteRequest(deleteUrl, "Удаление таблицы view " + fqn);
+            // deprecated - баг устранен
+            // String deleteUrl = ordaApiUrl + TABLE_URL + "/name/" + fqn;
+            // ordaClient.sendDeleteRequest(deleteUrl, "Удаление таблицы view " + fqn);
         }
 
         String url = ordaApiUrl + TABLE_URL;
