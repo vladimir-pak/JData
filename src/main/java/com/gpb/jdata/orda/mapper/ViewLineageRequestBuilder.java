@@ -33,16 +33,24 @@ public class ViewLineageRequestBuilder {
             String prefixFqn, // service.db
             ViewDTO viewDTO
     ) {
+        String normalizedPrefixFqn = normalizeIdent(prefixFqn);
         String viewSchema = normalizeIdent(viewDTO.getSchemaName());
         String viewName = normalizeIdent(viewDTO.getViewName());
         String sql = viewDTO.getViewDefinition();
 
-        if (viewSchema == null || viewSchema.isBlank() || viewName == null || viewName.isBlank()) {
-            log.warn("Некорректный ViewDTO: schemaName='{}', viewName='{}'", viewDTO.getSchemaName(), viewDTO.getViewName());
+        if (normalizedPrefixFqn == null || normalizedPrefixFqn.isBlank()
+                || viewSchema == null || viewSchema.isBlank()
+                || viewName == null || viewName.isBlank()) {
+            log.warn(
+                    "Некорректные входные данные: prefixFqn='{}', schemaName='{}', viewName='{}'",
+                    prefixFqn,
+                    viewDTO.getSchemaName(),
+                    viewDTO.getViewName()
+            );
             return List.of();
         }
 
-        String viewFqn = String.format("%s.%s.%s", prefixFqn, viewSchema, viewName);
+        String viewFqn = String.format("%s.%s.%s", normalizedPrefixFqn, viewSchema, viewName);
 
         // Кэш на один вызов: tableFqn -> Optional<tableId>
         Map<String, Optional<String>> idCache = new HashMap<>();
@@ -61,6 +69,7 @@ public class ViewLineageRequestBuilder {
         ViewSqlLineageParser.ParsedLineage parsed = parser.parse(sql);
 
         if (parsed.upstreamTables().isEmpty()) {
+            log.debug("View {}: upstream tables не найдены", viewFqn);
             return List.of();
         }
 
@@ -74,11 +83,13 @@ public class ViewLineageRequestBuilder {
         // 1) Резолвим alias/name -> upstream tableFqn
         for (var e : parsed.aliasToTable().entrySet()) {
             String aliasKey = normKey(e.getKey());
-            if (aliasKey == null) continue;
+            if (aliasKey == null) {
+                continue;
+            }
 
             Optional<String> upstreamFqnOpt = resolveUpstreamTableFqn(
                     omBaseUrl,
-                    prefixFqn,
+                    normalizedPrefixFqn,
                     viewSchema,
                     e.getValue(),
                     idCache
@@ -89,11 +100,10 @@ public class ViewLineageRequestBuilder {
             }
 
             String upstreamFqn = upstreamFqnOpt.get();
-            aliasToResolvedFqn.put(aliasKey, upstreamFqn);
-            upstreamColumnIndexByTableFqn.put(
-                    upstreamFqn,
-                    Map.of() // metadata таблиц здесь нет, поэтому fallback будет через tableFqn + "." + column
-            );
+
+            // не перетираем уже найденный mapping
+            aliasToResolvedFqn.putIfAbsent(aliasKey, upstreamFqn);
+            upstreamColumnIndexByTableFqn.putIfAbsent(upstreamFqn, Map.of());
         }
 
         // 2) Строим общий список columnsLineage
@@ -103,18 +113,20 @@ public class ViewLineageRequestBuilder {
                 aliasToResolvedFqn,
                 upstreamColumnIndexByTableFqn,
                 omBaseUrl,
-                prefixFqn,
+                normalizedPrefixFqn,
                 viewSchema,
                 idCache
         );
 
-        // 3) Создаём table-level edges, на каждом edge оставляем только относящиеся к конкретной upstream table columnsLineage
+        // 3) Создаём table-level edges, на каждом edge оставляем только относящиеся
+        // к конкретной upstream table columnsLineage
         List<AddLineageRequest> out = new ArrayList<>();
+        Set<String> emittedUpstreamFqns = new LinkedHashSet<>();
 
         for (var upstreamRef : parsed.upstreamTables()) {
             Optional<String> upstreamFqnOpt = resolveUpstreamTableFqn(
                     omBaseUrl,
-                    prefixFqn,
+                    normalizedPrefixFqn,
                     viewSchema,
                     upstreamRef,
                     idCache
@@ -128,12 +140,18 @@ public class ViewLineageRequestBuilder {
 
             String upstreamFqn = upstreamFqnOpt.get();
 
+            // дедупликация одного и того же upstream edge
+            if (!emittedUpstreamFqns.add(upstreamFqn)) {
+                continue;
+            }
+
             List<ColumnsLineage> filtered = columnsLineage.stream()
                     .map(cl -> {
                         List<String> from = Optional.ofNullable(cl.getFromColumns())
                                 .orElse(List.of())
                                 .stream()
                                 .filter(fc -> fc != null && fc.startsWith(upstreamFqn + "."))
+                                .distinct()
                                 .toList();
 
                         if (from.isEmpty()) {
@@ -152,6 +170,14 @@ public class ViewLineageRequestBuilder {
             if (upstreamId == null) {
                 log.warn("Upstream {} отсутствует в OMD", upstreamFqn);
                 continue;
+            }
+
+            if (filtered.isEmpty()) {
+                log.debug(
+                        "View {} -> {}: column-level lineage не найден, создаём table-level edge",
+                        upstreamFqn,
+                        viewFqn
+                );
             }
 
             out.add(AddLineageRequest.builder()
@@ -194,7 +220,8 @@ public class ViewLineageRequestBuilder {
             List<String> fromFqns = new ArrayList<>();
 
             for (var cr : mapping.from()) {
-                String holderRaw = normalizeIdent(cr.tableAliasOrName()); // alias / table name / null
+                String holderRaw = normalizeIdent(cr.tableAliasOrName());
+                String holderKey = normKey(holderRaw);
                 String colName = normalizeIdent(cr.column());
 
                 if (colName == null || colName.isBlank()) {
@@ -203,9 +230,9 @@ public class ViewLineageRequestBuilder {
 
                 String upstreamTableFqn = null;
 
-                if (holderRaw != null && !holderRaw.isBlank()) {
+                if (holderKey != null && !holderKey.isBlank()) {
                     // 1) пробуем как alias/name
-                    upstreamTableFqn = aliasToResolvedTableFqn.get(holderRaw.toLowerCase(Locale.ROOT));
+                    upstreamTableFqn = aliasToResolvedTableFqn.get(holderKey);
 
                     // 2) если не нашли — пробуем трактовать как имя таблицы без схемы
                     if (upstreamTableFqn == null) {
@@ -238,7 +265,7 @@ public class ViewLineageRequestBuilder {
 
                 Map<String, String> upstreamCols = upstreamColsByTableFqn.getOrDefault(upstreamTableFqn, Map.of());
 
-                String fromFqn = upstreamCols.get(colName.toLowerCase(Locale.ROOT));
+                String fromFqn = upstreamCols.get(normKey(colName));
                 if (fromFqn == null) {
                     fromFqn = upstreamTableFqn + "." + colName;
                 }

@@ -5,9 +5,12 @@ import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.select.FromItem;
 import net.sf.jsqlparser.statement.select.Join;
+import net.sf.jsqlparser.statement.select.ParenthesedFromItem;
+import net.sf.jsqlparser.statement.select.ParenthesedSelect;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.select.SelectItem;
+import net.sf.jsqlparser.statement.select.SetOperationList;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitorAdapter;
 import net.sf.jsqlparser.schema.Column;
@@ -22,103 +25,259 @@ import java.util.*;
 public final class ViewSqlLineageParser {
 
     public record TableRef(String schema, String name) {}
+
     public record ColumnRef(String tableAliasOrName, String column) {}
+
     public record ColumnMapping(String toColumn, Set<ColumnRef> from) {}
 
     public record ParsedLineage(
-            Map<String, TableRef> aliasToTable,   // alias/name -> (schema,table)
-            Set<TableRef> upstreamTables,         // tables from FROM/JOIN
-            List<ColumnMapping> columnMappings    // view col -> upstream cols
+            Map<String, TableRef> aliasToTable,   // alias/name -> physical table
+            Set<TableRef> upstreamTables,         // all physical upstream tables
+            List<ColumnMapping> columnMappings    // output column -> base input columns
+    ) {}
+
+    /**
+     * Источники текущего scope:
+     * 1) обычные таблицы alias/name -> physical table
+     * 2) derived table alias -> (derived col -> base columns)
+     */
+    private record SourceDescriptor(
+            Map<String, TableRef> aliasToTable,
+            Map<String, Map<String, Set<ColumnRef>>> derivedAliasToColumns
     ) {}
 
     public ParsedLineage parse(String viewDefinition) {
         if (viewDefinition == null || viewDefinition.isBlank()) {
-            return new ParsedLineage(Map.of(), Set.of(), List.of());
+            return empty();
         }
 
         try {
             Statement stmt = CCJSqlParserUtil.parse(viewDefinition);
-            if (!(stmt instanceof Select sel)) {
-                return new ParsedLineage(Map.of(), Set.of(), List.of());
+
+            // В JSqlParser 5.x SelectBody удалён;
+            // PlainSelect сам является Select-узлом.
+            if (stmt instanceof PlainSelect ps) {
+                return parsePlainSelect(ps);
             }
 
-            var body = sel.getSelectBody();
-            if (!(body instanceof PlainSelect ps)) {
-                return new ParsedLineage(Map.of(), Set.of(), List.of());
+            // Иногда верхний уровень может быть ParenthesedSelect или SetOperationList.
+            if (stmt instanceof ParenthesedSelect parenthesedSelect) {
+                Select inner = parenthesedSelect.getSelect();
+                return parseSelect(inner);
             }
 
-            Map<String, TableRef> aliasToTable = extractAliasToTable(ps);
-            Set<TableRef> upstream = new LinkedHashSet<>(aliasToTable.values());
-            List<ColumnMapping> mappings = extractColumnMappings(ps);
+            if (stmt instanceof SetOperationList setOperationList) {
+                return parseSetOperationList(setOperationList);
+            }
 
-            return new ParsedLineage(aliasToTable, upstream, mappings);
+            if (stmt instanceof Select select) {
+                return parseSelect(select);
+            }
 
+            return empty();
         } catch (Exception e) {
-            return new ParsedLineage(Map.of(), Set.of(), List.of());
+            return empty();
         }
     }
 
-    private static Map<String, TableRef> extractAliasToTable(PlainSelect ps) {
-        Map<String, TableRef> out = new LinkedHashMap<>();
+    private ParsedLineage parseSelect(Select select) {
+        if (select == null) {
+            return empty();
+        }
 
-        addFromItem(ps.getFromItem(), out);
+        if (select instanceof PlainSelect ps) {
+            return parsePlainSelect(ps);
+        }
+
+        if (select instanceof ParenthesedSelect psel) {
+            return parseSelect(psel.getSelect());
+        }
+
+        if (select instanceof SetOperationList setOp) {
+            return parseSetOperationList(setOp);
+        }
+
+        // Values и прочие экзотические варианты сейчас не поддерживаем.
+        return empty();
+    }
+
+    /**
+     * Для UNION / INTERSECT / EXCEPT:
+     * - собираем upstream физические таблицы из всех веток
+     * - column lineage склеиваем best-effort по всем PlainSelect веткам
+     *
+     * Это не идеально для сложных UNION-кейсов, но безопаснее, чем просто потерять lineage.
+     */
+    private ParsedLineage parseSetOperationList(SetOperationList setOp) {
+        if (setOp == null || setOp.getSelects() == null || setOp.getSelects().isEmpty()) {
+            return empty();
+        }
+
+        Map<String, TableRef> aliasToTable = new LinkedHashMap<>();
+        Set<TableRef> upstreamTables = new LinkedHashSet<>();
+        List<ColumnMapping> columnMappings = new ArrayList<>();
+
+        for (Select part : setOp.getSelects()) {
+            ParsedLineage parsed = parseSelect(part);
+            aliasToTable.putAll(parsed.aliasToTable());
+            upstreamTables.addAll(parsed.upstreamTables());
+            columnMappings.addAll(parsed.columnMappings());
+        }
+
+        return new ParsedLineage(aliasToTable, upstreamTables, columnMappings);
+    }
+
+    private ParsedLineage parsePlainSelect(PlainSelect ps) {
+        SourceDescriptor sources = extractSources(ps);
+
+        Map<String, TableRef> aliasToTable = sources.aliasToTable();
+        Set<TableRef> upstreamTables = new LinkedHashSet<>(aliasToTable.values());
+
+        List<ColumnMapping> columnMappings = extractColumnMappings(ps, sources);
+
+        return new ParsedLineage(aliasToTable, upstreamTables, columnMappings);
+    }
+
+    private SourceDescriptor extractSources(PlainSelect ps) {
+        Map<String, TableRef> aliasToTable = new LinkedHashMap<>();
+        Map<String, Map<String, Set<ColumnRef>>> derived = new LinkedHashMap<>();
+
+        addFromItem(ps.getFromItem(), aliasToTable, derived);
 
         List<Join> joins = ps.getJoins();
         if (joins != null) {
-            for (Join j : joins) {
-                addFromItem(j.getRightItem(), out);
+            for (Join join : joins) {
+                addFromItem(join.getRightItem(), aliasToTable, derived);
             }
         }
 
-        return out;
+        return new SourceDescriptor(aliasToTable, derived);
     }
 
-    private static void addFromItem(FromItem fi, Map<String, TableRef> out) {
-        if (fi == null) return;
-
-        if (fi instanceof Table t) {
-            String schema = t.getSchemaName(); // nullable
-            String name = t.getName();
-            String alias = (t.getAlias() != null) ? t.getAlias().getName() : null;
-
-            TableRef ref = new TableRef(schema, name);
-
-            if (alias != null && !alias.isBlank()) out.put(alias, ref);
-            if (name != null && !name.isBlank()) out.put(name, ref);
+    private void addFromItem(
+            FromItem fi,
+            Map<String, TableRef> aliasToTable,
+            Map<String, Map<String, Set<ColumnRef>>> derived
+    ) {
+        if (fi == null) {
+            return;
         }
 
-        // SubSelect / Values / Function пока игнорируем (best effort)
+        // 1) Обычная физическая таблица
+        if (fi instanceof Table table) {
+            registerTable(table, aliasToTable);
+            return;
+        }
+
+        // 2) Подзапрос в FROM: FROM (select ...) t
+        if (fi instanceof ParenthesedSelect psel) {
+            handleParenthesedSelect(psel, aliasToTable, derived);
+            return;
+        }
+
+        // 3) Скобочная join-конструкция:
+        // FROM a JOIN (b LEFT JOIN c ON ...) x ON ...
+        if (fi instanceof ParenthesedFromItem pfi) {
+            addFromItem(pfi.getFromItem(), aliasToTable, derived);
+
+            List<Join> joins = pfi.getJoins();
+            if (joins != null) {
+                for (Join join : joins) {
+                    addFromItem(join.getRightItem(), aliasToTable, derived);
+                }
+            }
+        }
     }
 
-    private static List<ColumnMapping> extractColumnMappings(PlainSelect ps) {
-        List<ColumnMapping> out = new ArrayList<>();
+    private void registerTable(Table table, Map<String, TableRef> aliasToTable) {
+        String schema = normalizeIdent(table.getSchemaName());
+        String name = normalizeIdent(table.getName());
+        String alias = table.getAlias() != null ? normalizeIdent(table.getAlias().getName()) : null;
 
+        if (name == null || name.isBlank()) {
+            return;
+        }
+
+        TableRef ref = new TableRef(schema, name);
+
+        if (alias != null && !alias.isBlank()) {
+            aliasToTable.put(alias, ref);
+            aliasToTable.put(alias.toLowerCase(Locale.ROOT), ref);
+        }
+
+        aliasToTable.put(name, ref);
+        aliasToTable.put(name.toLowerCase(Locale.ROOT), ref);
+    }
+
+    private void handleParenthesedSelect(
+            ParenthesedSelect psel,
+            Map<String, TableRef> aliasToTable,
+            Map<String, Map<String, Set<ColumnRef>>> derived
+    ) {
+        String alias = psel.getAlias() != null ? normalizeIdent(psel.getAlias().getName()) : null;
+        Select inner = psel.getSelect();
+
+        ParsedLineage innerParsed = parseSelect(inner);
+        if (innerParsed.upstreamTables().isEmpty()
+                && innerParsed.aliasToTable().isEmpty()
+                && innerParsed.columnMappings().isEmpty()) {
+            return;
+        }
+
+        // Физические таблицы внутреннего scope пробрасываем наверх,
+        // чтобы upstreamTables не терялись.
+        aliasToTable.putAll(innerParsed.aliasToTable());
+
+        // Если у подзапроса есть alias, то строим derived alias map:
+        // t.id -> [u.id], t.name -> [u.name], ...
+        if (alias != null && !alias.isBlank()) {
+            Map<String, Set<ColumnRef>> derivedCols = new LinkedHashMap<>();
+
+            for (ColumnMapping cm : innerParsed.columnMappings()) {
+                String col = normalizeIdent(cm.toColumn());
+                if (col == null || col.isBlank()) {
+                    continue;
+                }
+
+                derivedCols.put(col.toLowerCase(Locale.ROOT), new LinkedHashSet<>(cm.from()));
+            }
+
+            if (!derivedCols.isEmpty()) {
+                derived.put(alias.toLowerCase(Locale.ROOT), derivedCols);
+                derived.put(alias, derivedCols);
+            }
+        }
+    }
+
+    private List<ColumnMapping> extractColumnMappings(PlainSelect ps, SourceDescriptor sources) {
+        List<ColumnMapping> out = new ArrayList<>();
         List<SelectItem<?>> items = ps.getSelectItems();
-        if (items == null) return out;
+        if (items == null || items.isEmpty()) {
+            return out;
+        }
 
         for (SelectItem<?> item : items) {
             Expression expr = item.getExpression();
 
-            // пропускаем * и t.*
+            // * и t.* пока пропускаем
             if (expr instanceof AllColumns || expr instanceof AllTableColumns) {
                 continue;
             }
 
-            // имя целевой колонки view
-            String toCol = (item.getAlias() != null) ? item.getAlias().getName() : null;
+            String toCol = item.getAlias() != null ? normalizeIdent(item.getAlias().getName()) : null;
 
-            // если alias нет — и expr = Column, можно взять имя колонки
+            // Если alias нет, а это простая колонка — берём имя колонки
             if ((toCol == null || toCol.isBlank()) && expr instanceof Column c) {
-                toCol = c.getColumnName();
+                toCol = normalizeIdent(c.getColumnName());
             }
 
+            // Сложное выражение без alias безопасно не именуем
             if (toCol == null || toCol.isBlank()) {
-                // выражение без alias (например concat(a,b)) — пропускаем
                 continue;
             }
 
             Set<ColumnRef> fromCols = new LinkedHashSet<>();
-            collectColumnRefs(expr, fromCols);
+            collectResolvedColumnRefs(expr, fromCols, sources);
 
             if (!fromCols.isEmpty()) {
                 out.add(new ColumnMapping(toCol, fromCols));
@@ -128,18 +287,67 @@ public final class ViewSqlLineageParser {
         return out;
     }
 
-    private static void collectColumnRefs(Expression expr, Set<ColumnRef> out) {
-        if (expr == null) return;
+    private void collectResolvedColumnRefs(
+            Expression expr,
+            Set<ColumnRef> out,
+            SourceDescriptor sources
+    ) {
+        if (expr == null) {
+            return;
+        }
 
         expr.accept(new ExpressionVisitorAdapter() {
             @Override
             public void visit(Column column) {
-                String table = (column.getTable() != null) ? column.getTable().getName() : null;
-                String col = column.getColumnName();
-                if (col != null && !col.isBlank()) {
-                    out.add(new ColumnRef(table, col));
+                String holder = column.getTable() != null
+                        ? normalizeIdent(column.getTable().getName())
+                        : null;
+
+                String holderNorm = normKey(holder);
+                String col = normalizeIdent(column.getColumnName());
+
+                if (col == null || col.isBlank()) {
+                    return;
                 }
+
+                // 1) t.id -> раскрываем в базовые колонки derived table
+                if (holderNorm != null) {
+                    Map<String, Set<ColumnRef>> derivedCols =
+                            sources.derivedAliasToColumns().get(holderNorm);
+
+                    if (derivedCols != null) {
+                        Set<ColumnRef> base = derivedCols.get(col.toLowerCase(Locale.ROOT));
+                        if (base != null && !base.isEmpty()) {
+                            out.addAll(base);
+                            return;
+                        }
+                    }
+                }
+
+                // 2) Обычная колонка физической таблицы / alias
+                out.add(new ColumnRef(holder, col));
             }
         });
+    }
+
+    private ParsedLineage empty() {
+        return new ParsedLineage(Map.of(), Set.of(), List.of());
+    }
+
+    private static String normalizeIdent(String s) {
+        if (s == null) {
+            return null;
+        }
+
+        String v = s.trim();
+        if (v.length() >= 2 && v.startsWith("\"") && v.endsWith("\"")) {
+            v = v.substring(1, v.length() - 1);
+        }
+        return v;
+    }
+
+    private static String normKey(String s) {
+        String n = normalizeIdent(s);
+        return n == null ? null : n.toLowerCase(Locale.ROOT);
     }
 }
