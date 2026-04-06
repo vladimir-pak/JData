@@ -1,5 +1,9 @@
 package com.gpb.jdata.orda.controller;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -51,7 +55,18 @@ public class TableController {
             @PathVariable Long oid
     ) {
         logger.logApiCall(httpServletRequest, "SyncView");
-        viewService.putLineageByOid(oid);
+        // Кэш с UUID таблиц/представлений
+        Map<String, Optional<String>> idCache = new HashMap<>();
+        viewService.putLineageByOid(oid, idCache);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/sync/views")
+    @Operation(summary = "Запуск загрузки линеджа по всем представлениям")
+    public ResponseEntity<Void> syncView(HttpServletRequest httpServletRequest
+    ) {
+        logger.logApiCall(httpServletRequest, "SyncView");
+        viewService.handleAllViewLineage();
         return ResponseEntity.ok().build();
     }
 

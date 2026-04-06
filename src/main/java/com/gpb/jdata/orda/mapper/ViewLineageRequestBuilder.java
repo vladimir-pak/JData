@@ -31,7 +31,8 @@ public class ViewLineageRequestBuilder {
     public List<AddLineageRequest> buildEdgesForView(
             String omBaseUrl,
             String prefixFqn, // service.db
-            ViewDTO viewDTO
+            ViewDTO viewDTO,
+            Map<String, Optional<String>> idCache
     ) {
         String normalizedPrefixFqn = normalizeIdent(prefixFqn);
         String viewSchema = normalizeIdent(viewDTO.getSchemaName());
@@ -51,9 +52,6 @@ public class ViewLineageRequestBuilder {
         }
 
         String viewFqn = String.format("%s.%s.%s", normalizedPrefixFqn, viewSchema, viewName);
-
-        // Кэш на один вызов: tableFqn -> Optional<tableId>
-        Map<String, Optional<String>> idCache = new HashMap<>();
 
         String viewId = resolveIdCached(omBaseUrl, viewFqn, idCache).orElse(null);
         if (viewId == null) {

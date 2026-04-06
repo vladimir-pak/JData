@@ -233,4 +233,22 @@ public class TableRepository {
             return null;
         }
     }
+
+    public List<Long> findAllViews() {
+        String sql = """
+            SELECT cl.oid
+            FROM jdata.pg_class_rep cl
+            JOIN jdata.pg_namespace_rep n ON n.oid = cl.relnamespace
+            LEFT JOIN jdata.pg_partition_rule_rep ppr
+			ON ppr.parchildrelid = cl.oid
+            WHERE cl.relkind = 'v'
+            AND n.nspname != 'pg_toast'
+            AND ppr.oid is null -- не партиции
+        """;
+        try {
+            return jdbcTemplate.queryForList(sql, Long.class);
+        } catch (EmptyResultDataAccessException e) {
+            return null; // или throw new EntityNotFoundException("Schema not found with oid: " + oid);
+        }
+    }
 }

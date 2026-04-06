@@ -1,7 +1,10 @@
 package com.gpb.jdata.orda.service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -42,13 +45,16 @@ public class ViewService {
 
     public void handleViewLineage() {
         List<AddLineageRequest> requests = new ArrayList<>();
+        // Кэш с UUID таблиц/представлений
+        Map<String, Optional<String>> idCache = new HashMap<>();
 
         for (ViewDTO view : diffContainer.getUpdated()) {
             // Lineage request
             List<AddLineageRequest> viewRequests = requestBuilder.buildEdgesForView(
                 ordProperties.getBaseUrl(),
                 ordProperties.getPrefixFqn(),
-                view
+                view,
+                idCache
             );
             requests.addAll(viewRequests);
         }
@@ -80,13 +86,24 @@ public class ViewService {
         }
     }
 
-    public void putLineageByOid(Long oid) {
+    public void handleAllViewLineage() {
+        diffContainer.clear();
+        List<Long> viewIds = tableRepository.findAllViews();
+        // Кэш с UUID таблиц/представлений
+        Map<String, Optional<String>> idCache = new HashMap<>();
+        viewIds.stream().forEach(e -> {
+            putLineageByOid(e, idCache);
+        });
+    }
+
+    public void putLineageByOid(Long oid, Map<String, Optional<String>> idCache) {
         ViewDTO view = tableRepository.findViewByOid(oid);
 
         List<AddLineageRequest> requests = requestBuilder.buildEdgesForView(
             ordProperties.getBaseUrl(),
             ordProperties.getPrefixFqn(),
-            view
+            view,
+            idCache
         );
 
         String url = ordaApiUrl + LINEAGE_URL;
