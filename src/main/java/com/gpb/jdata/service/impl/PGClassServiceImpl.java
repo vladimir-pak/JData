@@ -8,6 +8,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.hibernate.Session;
@@ -23,12 +24,15 @@ import com.gpb.jdata.log.SvoiCustomLogger;
 import com.gpb.jdata.log.SvoiSeverityEnum;
 import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGClassReplication;
+import com.gpb.jdata.models.replication.PGNamespaceReplication;
 import com.gpb.jdata.models.replication.Statistics;
 import com.gpb.jdata.repository.ActionRepository;
 import com.gpb.jdata.repository.PGClassRepository;
+import com.gpb.jdata.repository.PGNamespaceRepository;
 import com.gpb.jdata.service.PGClassService;
 import com.gpb.jdata.utils.PostgresCopyStreamer;
 import com.gpb.jdata.utils.diff.ClassDiffContainer;
+import com.gpb.jdata.utils.diff.NamespaceDiffContainer;
 
 import lombok.RequiredArgsConstructor;
 
@@ -39,6 +43,7 @@ public class PGClassServiceImpl implements PGClassService {
     private final SvoiCustomLogger svoiLogger;
 
     private final PGClassRepository pgClassRepository;
+    private final PGNamespaceRepository pgNamespaceRepository;
     private final ActionRepository actionRepository;
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
@@ -46,6 +51,7 @@ public class PGClassServiceImpl implements PGClassService {
     private final PostgresCopyStreamer postgresCopyStreamer;
 
     private final ClassDiffContainer diffContainer;
+    private final NamespaceDiffContainer namespaceDiffContainer;
 
     private final PersistanceTransactions transactions;
 
@@ -142,6 +148,7 @@ public class PGClassServiceImpl implements PGClassService {
         List<PGClassReplication> toAdd = pgClassRepository.findNew();
         List<PGClassReplication> toUpdate = pgClassRepository.findUpdated();
         List<PGClassReplication> toDelete = pgClassRepository.findDeleted();
+
         List<Long> idsToDelete = toDelete.stream()
                 .map(r -> r.getOid())
                 .collect(Collectors.toList());
@@ -149,12 +156,18 @@ public class PGClassServiceImpl implements PGClassService {
         if (!toDelete.isEmpty()) {
             logger.info("[pg_attribute_rep] Deleting {} records from the replica table", toDelete.size());
             pgClassRepository.deleteAllById(idsToDelete);
-            toDelete.forEach(e -> {
-                    diffContainer.addDeleted(String.format("%s.%s",
-                            e.getRelnamespace(),
-                            e.getRelname()));
-                    diffContainer.addDeletedOids(e.getOid());
-            });
+            toDelete.forEach(e ->
+                    pgNamespaceRepository
+                            .findById(e.getRelnamespace().longValue())
+                            .ifPresent(namespace -> {
+                                diffContainer.addDeleted(String.format(
+                                        "%s.%s",
+                                        namespace.getNspname(),
+                                        e.getRelname()
+                                ));
+                                diffContainer.addDeletedOids(e.getOid());
+                            })
+            );
             logAction("DELETE", "pg_class_rep", toDelete.size() 
                     + " records deleted", "");
         }
