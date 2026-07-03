@@ -8,7 +8,6 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.hibernate.Session;
@@ -156,18 +155,19 @@ public class PGClassServiceImpl implements PGClassService {
         if (!toDelete.isEmpty()) {
             logger.info("[pg_attribute_rep] Deleting {} records from the replica table", toDelete.size());
             pgClassRepository.deleteAllById(idsToDelete);
-            toDelete.forEach(e ->
-                    pgNamespaceRepository
-                            .findById(e.getRelnamespace().longValue())
-                            .ifPresent(namespace -> {
-                                diffContainer.addDeleted(String.format(
-                                        "%s.%s",
-                                        namespace.getNspname(),
-                                        e.getRelname()
-                                ));
-                                diffContainer.addDeletedOids(e.getOid());
-                            })
-            );
+            toDelete.forEach(e -> {
+                Long namespaceOid = e.getRelnamespace().longValue();
+
+                pgNamespaceRepository
+                        .findById(namespaceOid)
+                        .map(PGNamespaceReplication::getNspname)
+                        .or(() -> namespaceDiffContainer.getDeletedByOid(namespaceOid))
+                        .ifPresent(nspname ->
+                                diffContainer.addDeleted(
+                                        nspname + "." + e.getRelname()
+                                )
+                        );
+            });
             logAction("DELETE", "pg_class_rep", toDelete.size() 
                     + " records deleted", "");
         }

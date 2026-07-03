@@ -4,7 +4,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -78,7 +77,7 @@ public class TableService {
         TableDTO table = tableRepository.findByOid(oid);
         
         if (table == null) {
-            log.error("Таблица oid={} пустая (null)", oid);
+            log.warn("Таблица oid={} пустая (null)", oid);
             return;
         }
 
@@ -92,12 +91,12 @@ public class TableService {
             }
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() != HttpStatus.NOT_FOUND) {
-                log.error("Ошибка при проверке таблицы в ОРДе {}: {}", fqn, e.getMessage());
+                log.warn("Ошибка при проверке таблицы в ОРДе {}: {}", fqn, e.getMessage());
                 return;
             }
             // Если таблица не найдена (404) ответ, то делаем PUT запрос
         } catch (Exception e) {
-            log.error("Ошибка при проверке таблицы в ОРДе {}: {}", fqn, e.getMessage());
+            log.warn("Ошибка при проверке таблицы в ОРДе {}: {}", fqn, e.getMessage());
             return;
         }
 

@@ -175,7 +175,7 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
             pgNamespaceRepository.deleteAllById(toDelete);
             toDelete.forEach(e -> {
                     diffContainer.addDeleted(replicationMap.get(e).getNspname());
-                    diffContainer.addDeletedOids(e);
+                    diffContainer.putDeletedByOid(e, replicationMap.get(e).getNspname());
             });
             logAction("DELETE", "pg_namespace_rep", toDelete.size() 
                     + " records deleted", "");
