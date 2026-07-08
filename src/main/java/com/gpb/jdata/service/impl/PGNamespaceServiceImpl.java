@@ -28,6 +28,7 @@ import com.gpb.jdata.models.replication.Action;
 import com.gpb.jdata.models.replication.PGNamespaceReplication;
 import com.gpb.jdata.models.replication.Statistics;
 import com.gpb.jdata.repository.ActionRepository;
+import com.gpb.jdata.repository.ExcludePatternsRepository;
 import com.gpb.jdata.repository.PGNamespaceRepository;
 import com.gpb.jdata.service.PGNamespaceService;
 import com.gpb.jdata.utils.diff.NamespaceDiffContainer;
@@ -44,6 +45,7 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
     private final ActionRepository actionRepository;
     private final DatabaseConfig databaseConfig;
     private final SessionFactory postgreSessionFactory;
+    private final ExcludePatternsRepository excludeRepository;
 
     private final NamespaceDiffContainer diffContainer;
 
@@ -150,6 +152,7 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
      */
     private void compareSnapshots(List<PGNamespace> newData, Connection connection) throws SQLException {
         List<PGNamespaceReplication> replicationData = pgNamespaceRepository.findAll();
+
         Map<Long, PGNamespaceReplication> replicationMap = replicationData.stream()
                 .collect(Collectors.toMap(PGNamespaceReplication::getOid, r -> r));
 
@@ -157,54 +160,89 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
         List<PGNamespace> toUpdate = new ArrayList<>();
         List<Long> toDelete = new ArrayList<>(replicationMap.keySet());
 
+        List<String> excludePatterns = excludeRepository.getSchemaPatterns();
+
         for (PGNamespace masterRecord : newData) {
             Long oid = masterRecord.getOid();
+            String nspname = masterRecord.getNspname();
+
             PGNamespaceReplication replicationRecord = replicationMap.get(oid);
+
+            /*
+            * Если namespace попадает под exclude:
+            * - не добавляем в новые
+            * - не добавляем в изменённые
+            * - если он уже есть в реплике, оставить его кандидатом на удаление
+            */
+            if (isExcludedNamespace(nspname, excludePatterns)) {
+                logger.debug("[pg_namespace_rep] Namespace {} excluded by pattern", nspname);
+                continue;
+            }
+
             if (replicationRecord == null) {
                 toAdd.add(masterRecord);
             } else {
                 if (!convertToReplication(masterRecord, "adb").equals(replicationRecord)) {
                     toUpdate.add(masterRecord);
                 }
+
                 toDelete.remove(oid);
             }
         }
 
         if (!toDelete.isEmpty()) {
             logger.info("[pg_namespace_rep] Deleting {} records from the replica table", toDelete.size());
+
             pgNamespaceRepository.deleteAllById(toDelete);
+
             toDelete.forEach(e -> {
-                    diffContainer.addDeleted(replicationMap.get(e).getNspname());
-                    diffContainer.putDeletedByOid(e, replicationMap.get(e).getNspname());
+                PGNamespaceReplication deletedNamespace = replicationMap.get(e);
+
+                if (deletedNamespace != null) {
+                    diffContainer.addDeleted(deletedNamespace.getNspname());
+                    diffContainer.putDeletedByOid(e, deletedNamespace.getNspname());
+                }
             });
-            logAction("DELETE", "pg_namespace_rep", toDelete.size() 
+
+            logAction("DELETE", "pg_namespace_rep", toDelete.size()
                     + " records deleted", "");
         }
 
         if (!toAdd.isEmpty()) {
             logger.info("[pg_namespace_rep] Adding {} records to the replica table", toAdd.size());
+
             replicate(toAdd, connection);
+
             toAdd.forEach(e -> diffContainer.addUpdated(e.getOid()));
-            logAction("INSERT", "pg_namespace_rep", toAdd.size() 
+
+            logAction("INSERT", "pg_namespace_rep", toAdd.size()
                     + " records inserted", "");
         }
 
         if (!toUpdate.isEmpty()) {
             logger.info("[pg_namespace_rep] Updating {} records in the replica table", toUpdate.size());
+
             toUpdate.forEach(e -> {
-                    logAction("UPDATE", "pg_namespace_rep", " old: " +
-                                    pgNamespaceRepository.findPGNamespaceReplicationByOid(e.getOid())
-                            , " new:" + e.toString());
-                    diffContainer.addUpdated(e.getOid());
+                logAction(
+                        "UPDATE",
+                        "pg_namespace_rep",
+                        " old: " + pgNamespaceRepository.findPGNamespaceReplicationByOid(e.getOid()),
+                        " new:" + e
+                );
+
+                diffContainer.addUpdated(e.getOid());
             });
+
             replicate(toUpdate, connection);
-            logAction("UPDATE", "pg_namespace_rep", toUpdate.size() 
+
+            logAction("UPDATE", "pg_namespace_rep", toUpdate.size()
                     + " records updated", "");
         }
 
         long totalOperations = toAdd.size() + toUpdate.size() + toDelete.size();
         writeStatistics(totalOperations, "pg_namespace_rep", connection);
     }
+
     /**
      * Получение количества операций для таблицы pg_namespace
      */
@@ -267,5 +305,15 @@ public class PGNamespaceServiceImpl implements PGNamespaceService {
         action.setDetails(details);
         action.setTimestamp(LocalDateTime.now());
         actionRepository.save(action);
+    }
+
+    private boolean isExcludedNamespace(String nspname, List<String> excludePatterns) {
+        if (nspname == null || excludePatterns == null || excludePatterns.isEmpty()) {
+            return false;
+        }
+
+        return excludePatterns.stream()
+                .filter(pattern -> pattern != null && !pattern.isBlank())
+                .anyMatch(pattern -> nspname.matches(pattern));
     }
 }

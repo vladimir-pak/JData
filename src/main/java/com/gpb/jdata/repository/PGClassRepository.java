@@ -20,30 +20,58 @@ public interface PGClassRepository extends JpaRepository<PGClassReplication, Lon
     @Query(value = """
             SELECT m.*
             FROM jdata.pg_class_rep_tmp m
+            JOIN jdata.pg_namespace_rep n
+                ON n.oid = m.relnamespace
             LEFT JOIN jdata.pg_class_rep r
                 ON r.oid = m.oid
             WHERE r.oid IS NULL
+            AND NOT EXISTS (
+                SELECT 1
+                FROM jdata.exclude_patterns ep
+                WHERE ep.entity_type = 'TABLE'
+                AND m.relname ~ ep.pattern_expr
+            );
             """, nativeQuery = true)
     List<PGClassReplication> findNew();
 
     @Query(value = """
             SELECT r.*
             FROM jdata.pg_class_rep r
-            LEFT JOIN jdata.pg_class_rep_tmp m
+            LEFT JOIN (
+            	SELECT tmp.*
+            	FROM jdata.pg_class_rep_tmp tmp
+            	JOIN jdata.pg_namespace_rep n
+            	ON tmp.relnamespace = n."oid"
+            ) m
                 ON m.oid = r.oid
-            WHERE m.oid IS NULL;
+            WHERE m.oid IS NULL
+            OR EXISTS (
+                SELECT 1
+                FROM jdata.exclude_patterns ep
+                WHERE ep.entity_type = 'TABLE'
+                    AND m.relname ~ ep.pattern_expr
+            );
             """, nativeQuery = true)
     List<PGClassReplication> findDeleted();
 
     @Query(value = """
             SELECT m.*
             FROM jdata.pg_class_rep_tmp m
+            JOIN jdata.pg_namespace_rep n
+                ON n.oid = m.relnamespace
             JOIN jdata.pg_class_rep r
                 ON m.oid = r.oid
-            WHERE 
-                (m.relname    IS DISTINCT FROM r.relname)
-            OR (m.relnamespace IS DISTINCT FROM r.relnamespace)
-            OR (m.relkind IS DISTINCT FROM r.relkind);
+            WHERE (
+                    m.relname IS DISTINCT FROM r.relname
+                OR m.relnamespace IS DISTINCT FROM r.relnamespace
+                OR m.relkind IS DISTINCT FROM r.relkind
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM jdata.exclude_patterns ep
+                WHERE ep.entity_type = 'TABLE'
+                    AND m.relname ~ ep.pattern_expr
+            );
             """, nativeQuery = true)
     List<PGClassReplication> findUpdated();
 
