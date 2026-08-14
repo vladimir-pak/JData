@@ -21,6 +21,9 @@ public class OrdProperties {
     @Value("${keycloak.username}")
     private String username;
 
+    @Value("${keycloak.max-connections}")
+    private int maxConnections;
+
     public String getPrefixFqn () {
         return String.format("%s.%s", serviceName, dbName);
     }

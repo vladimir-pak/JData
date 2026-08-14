@@ -1,11 +1,14 @@
 package com.gpb.jdata.orda.controller;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.gpb.jdata.log.SvoiCustomLogger;
+import com.gpb.jdata.orda.service.CleanUpService;
 import com.gpb.jdata.orda.service.MetadataService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -20,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 public class MetadataController {
     
     private final MetadataService metadataService;
+    private final CleanUpService cleanUpService;
     private final SvoiCustomLogger logger;
     
     /**
@@ -50,9 +54,19 @@ public class MetadataController {
 
     @PostMapping("/ord/delete")
     @Operation(summary = "Удаление удаленных сущностей в ОРДе")
-    public ResponseEntity<Void> deleteMetadataOrd(HttpServletRequest httpServletRequest) {
+    public ResponseEntity<?>  deleteMetadataOrd(
+            @RequestParam(defaultValue = "true") boolean validate,
+            HttpServletRequest httpServletRequest
+    ) {
         logger.logApiCall(httpServletRequest, "DeleteMetadata");
-        metadataService.handleDeletionsInOrd();
-        return ResponseEntity.ok().build();
+        boolean started = cleanUpService.start(validate);
+
+        if (!started) {
+            return ResponseEntity
+                    .status(HttpStatus.CONFLICT)
+                    .body("Cleanup already running");
+        }
+
+        return ResponseEntity.ok("Cleanup completed");
     }
 }

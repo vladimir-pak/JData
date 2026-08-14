@@ -45,7 +45,6 @@ greenplum:
   url: ${GREENPLUM_URL:jdbc:postgresql://localhost:5432/adb}
   username: ${GREENPLUM_USERNAME:user}
   password: ${GREENPLUM_PASSWORD:password}
-  type: PostgreSQL
   persistance-storage: config/pg-transactions.json
   
 ord:
@@ -55,6 +54,11 @@ ord:
   greenplum:
     serviceName: NDP
     dbName: adb
+  cleanup:
+    enabled: true
+    schedule: 0 1 * * * ?
+    validate: true
+    threshold: 30 # В процентах
 
 sync:
   enabled: true

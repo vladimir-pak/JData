@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Service;
 
+import com.gpb.jdata.orda.config.CleanUpSchedulerConfig;
 import com.gpb.jdata.orda.repository.SchemaRepository;
 import com.gpb.jdata.orda.repository.TableRepository;
 import com.gpb.jdata.utils.diff.ClassDiffContainer;
@@ -18,6 +19,7 @@ public class MetadataService {
     private final TableService tableService;
     private final DatabaseService databaseService;
     private final ViewService viewService;
+    private final CleanUpService cleanUpService;
     private final ClassDiffContainer classDiffContainer;
     private final NamespaceDiffContainer namespaceDiffContainer;
 
@@ -82,17 +84,6 @@ public class MetadataService {
             schemaService.handleDeleted();
             tableService.handleDeleted();
             logger.info("Обработка удалений завершена успешно.");
-        } catch (Exception e) {
-            logger.error("Ошибка при обработке удалений: {}", e.getMessage(), e);
-        }
-    }
-
-    public void handleDeletionsInOrd() {
-        try {
-            logger.info("Начало обработки удаленных сущностей в ОРДе.");
-            schemaService.handleDeletedInOrd();
-            tableService.handleDeletedInOrd();
-            logger.info("Обработка удаленных сущностей в ОРДе завершена успешно.");
         } catch (Exception e) {
             logger.error("Ошибка при обработке удалений: {}", e.getMessage(), e);
         }

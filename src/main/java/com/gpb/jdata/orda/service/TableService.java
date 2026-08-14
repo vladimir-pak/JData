@@ -1,12 +1,7 @@
 package com.gpb.jdata.orda.service;
 
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -20,7 +15,6 @@ import com.gpb.jdata.orda.client.OrdaClient;
 import com.gpb.jdata.orda.dto.TableDTO;
 import com.gpb.jdata.orda.dto.ViewDTO;
 import com.gpb.jdata.orda.properties.OrdProperties;
-import com.gpb.jdata.orda.repository.SchemaRepository;
 import com.gpb.jdata.orda.repository.TableRepository;
 import com.gpb.jdata.utils.diff.ClassDiffContainer;
 import com.gpb.jdata.utils.diff.ViewDiffContainer;
@@ -41,7 +35,6 @@ public class TableService {
     private static final String TABLE_URL = "/tables";
     
     private final TableRepository tableRepository;
-    private final SchemaRepository schemaRepository;
     private final OrdaClient ordaClient;
 
     private final OrdProperties ordProperties;
@@ -142,77 +135,18 @@ public class TableService {
         }
     }
 
-    private void handleDeletedBySchema(String schema) {
-        Boolean next = true;
-        String after = null;
-        int page = 0;
-        int limit = 100;
-        String baseUrl = ordaApiUrl + TABLE_URL;
-
-        Set<String> allRepTables = tableRepository.findAllTablesBySchema(schema);
-
-        Map<String, String> params = new HashMap<>();
-        params.put("database", ordProperties.getPrefixFqn());
-        params.put("databaseSchema", String.format("%s.%s", ordProperties.getPrefixFqn(), schema));
-        params.put("limit", Integer.toString(limit));
-        params.put("include", "non-deleted");
-
-        Set<String> fqnList = ConcurrentHashMap.newKeySet();
-
-        while (next) {
-            if (after != null) {
-                params.put("after", after);
+    public void deleteTableByFqn(String fqn) {
+        try {
+            String url = ordaApiUrl + TABLE_URL + "/name/" + fqn;
+            if (!ordaClient.isProjectEntity(fqn)) {
+                ordaClient.sendDeleteRequest(url, "Удаление таблицы " + fqn);
             }
-            Map<String, Object> response = new HashMap<>();
-            try {
-                response.putAll(ordaClient.sendGetRequest(baseUrl, params));
-            } catch (Exception e) {
-                page++;
-                continue;
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                log.warn("Таблица не найдена: {}", fqn);
             }
-            
-            page++;
-
-            // Извлекаем данные
-            List<Map<String, Object>> data = (List<Map<String, Object>>) response.get("data");
-            if (data != null && !data.isEmpty()) {
-                for (Map<String, Object> table : data) {
-                    String schemaTable = String.format("%s.%s", schema, (String) table.get("name"));
-                    fqnList.add(schemaTable);
-                }
-            }
-
-            // Проверяем наличие следующей страницы
-            Map<String, Object> paging = (Map<String, Object>) response.get("paging");
-            if (paging != null && paging.containsKey("after")) {
-                after = (String) paging.get("after");
-                // Дополнительная проверка: если получено меньше данных, чем limit, значит это последняя страница
-                if (data.size() < limit) {
-                    next = false;
-                }
-            } else {
-                next = false;
-            }
-
-            if (page > 100) {
-                log.warn("Достигнуто максимальное количество страниц при загрузке схем: {}", page);
-                break;
-            }
-        }
-
-        Set<String> difference = new HashSet<>(fqnList);
-        difference.removeAll(allRepTables);
-        log.info("Найдено к удалению {} таблиц в схеме {}", difference.size(), schema);
-
-        for (String table : difference) {
-            deleteTable(table);
-        }
-    }
-
-    public void handleDeletedInOrd() {
-        Set<String> repSchemas = schemaRepository.findAllNspname();
-        for (String schema : repSchemas) {
-            handleDeletedBySchema(schema);
+        } catch (Exception e) {
+            log.error("Ошибка при удалении таблицы {}: {}", fqn, e.getMessage());
         }
     }
 

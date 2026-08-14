@@ -251,4 +251,20 @@ public class TableRepository {
             return null; // или throw new EntityNotFoundException("Schema not found with oid: " + oid);
         }
     }
+
+    public Set<String> findAllNames() {
+        String sql = """
+            SELECT n.nspname || '.' || cl.relname as schema_table
+            FROM jdata.pg_class_rep cl
+            JOIN jdata.pg_namespace_rep n ON n.oid = cl.relnamespace
+            WHERE cl.relkind in ('r','v','m','f','p')
+            AND n.nspname != 'pg_toast'
+        """;
+        try {
+            List<String> names = jdbcTemplate.queryForList(sql, String.class);
+            return new HashSet<>(names);
+        } catch (EmptyResultDataAccessException e) {
+            return Collections.emptySet();
+        }
+    }
 }
