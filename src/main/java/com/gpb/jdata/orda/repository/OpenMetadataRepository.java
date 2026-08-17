@@ -1,9 +1,6 @@
 package com.gpb.jdata.orda.repository;
 
-import lombok.RequiredArgsConstructor;
-
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -16,10 +13,18 @@ import java.util.List;
 import java.util.Set;
 
 @Repository
-@RequiredArgsConstructor
 public class OpenMetadataRepository {
 
     private final OrdProperties ordProperties;
+    private final JdbcTemplate ordJdbcTemplate;
+
+    public OpenMetadataRepository(
+            OrdProperties ordProperties,
+            @Qualifier("ordJdbcTemplate") JdbcTemplate ordJdbcTemplate
+    ) {
+        this.ordProperties = ordProperties;
+        this.ordJdbcTemplate = ordJdbcTemplate;
+    }
 
     private static final String TABLE_SQL = """
             select te."json" ->> 'fullyQualifiedName' as fqn
@@ -47,9 +52,6 @@ public class OpenMetadataRepository {
             and se."json" -> 'database' ->> 'fullyQualifiedName' ilike ?
             and t.fromid is null
             """;
-
-    @Qualifier("ordJdbcTemplate")
-    private final JdbcTemplate ordJdbcTemplate;
 
     public Set<String> findAllTables() {
         try {

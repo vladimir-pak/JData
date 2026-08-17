@@ -7,7 +7,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 
 @Component
-@ConfigurationProperties(prefix = "ord.greenplum.cleanup")
+@ConfigurationProperties(prefix = "ord.cleanup")
 @RequiredArgsConstructor
 @Data
 public class OrdCleanupProperties {
