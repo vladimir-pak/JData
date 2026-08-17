@@ -8,6 +8,8 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import com.gpb.jdata.orda.properties.OrdProperties;
+
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -17,8 +19,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class OpenMetadataRepository {
 
-    @Value("${ord.greenplum.serviceName}")
-    private final String serviceName;
+    private final OrdProperties ordProperties;
 
     private static final String TABLE_SQL = """
             select te."json" ->> 'fullyQualifiedName' as fqn
@@ -52,7 +53,7 @@ public class OpenMetadataRepository {
 
     public Set<String> findAllTables() {
         try {
-            String servicePattern = serviceName + ".%";
+            String servicePattern = ordProperties.getServiceName() + ".%";
             List<String> names = ordJdbcTemplate.queryForList(TABLE_SQL, String.class, servicePattern);
             return new HashSet<>(names);
         } catch (EmptyResultDataAccessException e) {
@@ -62,7 +63,7 @@ public class OpenMetadataRepository {
 
     public Set<String> findAllSchemas() {
         try {
-            String servicePattern = serviceName + ".%";
+            String servicePattern = ordProperties.getServiceName() + ".%";
             List<String> names = ordJdbcTemplate.queryForList(SCHEMA_SQL, String.class, servicePattern);
             return new HashSet<>(names);
         } catch (EmptyResultDataAccessException e) {
