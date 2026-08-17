@@ -6,7 +6,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.gpb.jdata.orda.service.MetadataService;
-import com.gpb.jdata.properties.SyncProperties;
 import com.gpb.jdata.service.PGAttributeService;
 import com.gpb.jdata.service.PGClassService;
 import com.gpb.jdata.service.PGConstraintService;
@@ -16,6 +15,7 @@ import com.gpb.jdata.service.PGPartitionRuleService;
 import com.gpb.jdata.service.PGPartitionService;
 import com.gpb.jdata.service.PGTypeService;
 import com.gpb.jdata.service.PGViewsService;
+import com.gpb.jdata.state.SyncState;
 import com.gpb.jdata.utils.diff.ClassDiffContainer;
 import com.gpb.jdata.utils.diff.NamespaceDiffContainer;
 
@@ -39,7 +39,8 @@ public class Init {
     private final PGViewsService pgViewsService;
     private final PGPartitionService pgPartitionService;
     private final PGPartitionRuleService pgPartitionRuleService;
-    private final SyncProperties syncProperties;
+    
+    private final SyncState syncState;
 
     private final MetadataService metadataService;
 
@@ -52,7 +53,7 @@ public class Init {
      */
     @Scheduled(fixedDelayString = "${sync.interval:60000}")
     public void synchronizeAll() {
-        if (!syncProperties.isEnabled()) {
+        if (!syncState.isEnabled()) {
             logger.debug("Синхронизация отключена (sync.enabled=false)");
             return;
         }
