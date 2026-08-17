@@ -6,6 +6,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.gpb.jdata.orda.service.MetadataService;
+import com.gpb.jdata.orda.state.SyncState;
 import com.gpb.jdata.service.PGAttributeService;
 import com.gpb.jdata.service.PGClassService;
 import com.gpb.jdata.service.PGConstraintService;
@@ -15,7 +16,7 @@ import com.gpb.jdata.service.PGPartitionRuleService;
 import com.gpb.jdata.service.PGPartitionService;
 import com.gpb.jdata.service.PGTypeService;
 import com.gpb.jdata.service.PGViewsService;
-import com.gpb.jdata.state.SyncState;
+
 import com.gpb.jdata.utils.diff.ClassDiffContainer;
 import com.gpb.jdata.utils.diff.NamespaceDiffContainer;
 

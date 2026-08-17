@@ -1,4 +1,4 @@
-package com.gpb.jdata.state;
+package com.gpb.jdata.orda.state;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
