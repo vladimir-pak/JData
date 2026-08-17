@@ -59,6 +59,10 @@ ord:
     schedule: 0 1 * * * ?
     validate: true
     threshold: 30 # В процентах
+  datasource:
+    url: ${OMD_DB_URL:jdbc:postgresql://localhost:5432/jdata_db}
+    username: ${OMD_DB_USER:postgres}
+    password: ${OMD_DB_PASSWORD:kampus}
 
 sync:
   enabled: true
